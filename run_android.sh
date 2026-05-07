@@ -186,3 +186,4 @@ if [[ -n "${PACKAGE:-}" ]]; then
 fi
 
 echo ">> Done."
+echo ">> Finished: $(date '+%A, %B %-d, %Y at %-I:%M %p')"
