@@ -156,3 +156,16 @@ Lambdas are captured by value at subscription. Because tiles live for the lifeti
 3. **Token swap** — Step through `Token._Ready` 18 times; after Step 3 the `MakeMaterial` counter should stay at 18 total (one per subclass) instead of 18 * N swaps.
 4. **Modal picking gate** — Open the settings drawer mid-game and watch `Performance/Time/Physics Process`: should drop to ~0 while the drawer is open (already true; verifies the implemented fix did not regress).
 5. **Scene reload** — Reload `game.tscn` 10x; heap should be flat after Step 5.
+
+---
+
+## Execution Log — 2026-05-10 PM
+
+- Step 1 — Resize `_movesBuffer` to fit worst case: ✓ applied
+- Step 2 — Replace `Within` / `Ring` `IEnumerable` with direct-write overloads: ✓ applied
+- Step 3 — Cache `Mesh` and `StandardMaterial3D` resources per token subclass: ✓ applied
+- Step 4 — Share the four `StandardMaterial3D` resources across tiles: ✓ applied
+- Step 5 — Disconnect `Area3D.InputEvent` lambdas on shutdown: ⊘ skipped optional
+- Step 6 — Precompute checker index for tile colour selection: ⊘ skipped optional
+
+Final build: green
