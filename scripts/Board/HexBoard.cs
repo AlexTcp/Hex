@@ -66,9 +66,17 @@ public partial class HexBoard : Node3D
         Roughness = 0.5f,
     };
 
+    private static readonly StandardMaterial3D[] TileMaterialsByChecker =
+    {
+        TileMaterialA,
+        TileMaterialB,
+        TileMaterialC,
+    };
+
     private sealed class Tile
     {
         public HexCoord Coord;
+        public int CheckerIndex;
         public MeshInstance3D Mesh;
         public StandardMaterial3D BaseMaterial;
         public StandardMaterial3D HighlightMaterial;
@@ -120,15 +128,10 @@ public partial class HexBoard : Node3D
 
     private Tile BuildTile(HexCoord coord)
     {
-        var tile = new Tile { Coord = coord };
-
         var checker = ((coord.Q - coord.R) % 3 + 3) % 3;
-        tile.BaseMaterial = checker switch
-        {
-            0 => TileMaterialA,
-            1 => TileMaterialB,
-            _ => TileMaterialC,
-        };
+        var tile = new Tile { Coord = coord, CheckerIndex = checker };
+
+        tile.BaseMaterial = TileMaterialsByChecker[checker];
         tile.HighlightMaterial = HighlightMaterialShared;
 
         var hexMesh = new CylinderMesh
