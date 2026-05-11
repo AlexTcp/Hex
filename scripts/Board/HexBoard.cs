@@ -83,8 +83,11 @@ public partial class HexBoard : Node3D
 
     private void BuildBoard()
     {
-        foreach (var h in HexCoord.Within(Radius))
+        var coords = new List<HexCoord>(1 + 3 * Radius * (Radius + 1));
+        HexCoord.Within(Radius, coords);
+        for (int i = 0; i < coords.Count; i++)
         {
+            var h = coords[i];
             var tile = BuildTile(h);
             _tiles[h] = tile;
             AddChild(tile.Area);

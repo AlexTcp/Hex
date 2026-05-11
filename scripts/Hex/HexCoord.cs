@@ -59,6 +59,31 @@ public readonly struct HexCoord : IEquatable<HexCoord>
     public static bool operator !=(HexCoord a, HexCoord b) => !a.Equals(b);
     public override string ToString() => $"({Q},{R})";
 
+    public static void Within(int radius, List<HexCoord> output)
+    {
+        for (int q = -radius; q <= radius; q++)
+        {
+            int rMin = Math.Max(-radius, -q - radius);
+            int rMax = Math.Min(radius, -q + radius);
+            for (int r = rMin; r <= rMax; r++)
+                output.Add(new HexCoord(q, r));
+        }
+    }
+
+    public static void Ring(int radius, List<HexCoord> output)
+    {
+        if (radius == 0) { output.Add(Zero); return; }
+        var hex = Directions[4] * radius;
+        for (int side = 0; side < 6; side++)
+        {
+            for (int step = 0; step < radius; step++)
+            {
+                output.Add(hex);
+                hex += Directions[side];
+            }
+        }
+    }
+
     public static IEnumerable<HexCoord> Within(int radius)
     {
         for (int q = -radius; q <= radius; q++)

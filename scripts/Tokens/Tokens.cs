@@ -76,7 +76,9 @@ public sealed partial class Jumper : Token
     public override void LegalMoves(HexCoord from, int boardRadius, List<HexCoord> output)
     {
         output.Clear();
-        foreach (var h in HexCoord.Ring(2)) output.Add(from + h);
+        int start = output.Count;
+        HexCoord.Ring(2, output);
+        for (int i = start; i < output.Count; i++) output[i] = from + output[i];
         Filter(output, from, boardRadius);
     }
 
@@ -129,7 +131,8 @@ public sealed partial class Spiral : Token
     public override void LegalMoves(HexCoord from, int boardRadius, List<HexCoord> output)
     {
         output.Clear();
-        foreach (var h in HexCoord.Within(2)) output.Add(from + h);
+        HexCoord.Within(2, output);
+        for (int i = 0; i < output.Count; i++) output[i] = from + output[i];
         Filter(output, from, boardRadius);
     }
 
@@ -161,7 +164,7 @@ public sealed partial class Ringwalk : Token
         output.Clear();
         int ring = from.DistanceFromOrigin();
         if (ring == 0) return;
-        foreach (var h in HexCoord.Ring(ring)) output.Add(h);
+        HexCoord.Ring(ring, output);
         Filter(output, from, boardRadius);
     }
 
@@ -210,9 +213,9 @@ public sealed partial class Orbit : Token
         output.Clear();
         int ring = from.DistanceFromOrigin();
         if (ring - 1 >= 0)
-            foreach (var h in HexCoord.Ring(ring - 1)) output.Add(h);
+            HexCoord.Ring(ring - 1, output);
         if (ring + 1 <= boardRadius)
-            foreach (var h in HexCoord.Ring(ring + 1)) output.Add(h);
+            HexCoord.Ring(ring + 1, output);
         Filter(output, from, boardRadius);
     }
 
@@ -228,7 +231,7 @@ public sealed partial class Edge : Token
     {
         output.Clear();
         if (boardRadius > 0)
-            foreach (var h in HexCoord.Ring(boardRadius)) output.Add(h);
+            HexCoord.Ring(boardRadius, output);
         Filter(output, from, boardRadius);
     }
 
@@ -243,7 +246,7 @@ public sealed partial class Anchor : Token
     public override void LegalMoves(HexCoord from, int boardRadius, List<HexCoord> output)
     {
         output.Clear();
-        foreach (var h in HexCoord.Ring(1)) output.Add(h);
+        HexCoord.Ring(1, output);
         Filter(output, from, boardRadius);
     }
 
@@ -310,7 +313,8 @@ public sealed partial class Drifter : Token
     public override void LegalMoves(HexCoord from, int boardRadius, List<HexCoord> output)
     {
         output.Clear();
-        foreach (var h in HexCoord.Within(3)) output.Add(from + h);
+        HexCoord.Within(3, output);
+        for (int i = 0; i < output.Count; i++) output[i] = from + output[i];
         Filter(output, from, boardRadius);
     }
 
