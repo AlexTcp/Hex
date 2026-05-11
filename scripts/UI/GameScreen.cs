@@ -11,13 +11,13 @@
 //
 // Interactions:
 //   - HexBoard: fetched via GetNode<HexBoard>(BoardPath) and updated with
-//     SetToken whenever the player picks a different piece.
-//   - TokenCatalog: enumerated to build the token list and re-instantiate
-//     the chosen token for the board.
-//   - Token: factory output from TokenCatalog; reads DisplayName and
-//     Description for the UI button and label.
+//     SetToken(int index) whenever the player picks a different piece.
+//   - TokenCatalog: TokenInfo array iterated to build the picker UI without
+//     instantiating tokens.
 //   - GameSession: looked up at /root/GameSession to persist the player's
 //     SelectedTokenIndex for the session.
+//   - DebugLog: subscribes to GameplayActiveChanged to gate viewport
+//     PhysicsObjectPicking on/off as modals open and close.
 // =============================================================================
 
 using Godot;
@@ -38,20 +38,21 @@ public partial class GameScreen : Node3D
 
     public override void _Ready()
     {
-        GetViewport().PhysicsObjectPicking = true;
+        SetGameplayActive(!DebugLog.IsAnyModalOpen);
+        DebugLog.GameplayActiveChanged += SetGameplayActive;
 
         _board = GetNode<HexBoard>(BoardPath);
         _description = GetNode<Label>(DescriptionPath);
         var list = GetNode<VBoxContainer>(TokenListPath);
 
-        for (int i = 0; i < TokenCatalog.All.Count; i++)
+        for (int i = 0; i < TokenCatalog.All.Length; i++)
         {
-            var preview = TokenCatalog.All[i]();
+            var info = TokenCatalog.All[i];
             var index = i;
-            var description = preview.Description;
+            var description = info.Description;
             var button = new Button
             {
-                Text = preview.DisplayName,
+                Text = info.Name,
                 CustomMinimumSize = new Vector2(0, 40),
                 ToggleMode = true,
                 Alignment = HorizontalAlignment.Left,
@@ -63,11 +64,22 @@ public partial class GameScreen : Node3D
         GD.Print($"[GameScreen] _Ready done, camera={GetViewport().GetCamera3D()?.Name}, viewport={GetViewport().GetVisibleRect().Size}");
     }
 
+    public override void _ExitTree()
+    {
+        DebugLog.GameplayActiveChanged -= SetGameplayActive;
+    }
+
+    public void SetGameplayActive(bool active)
+    {
+        var viewport = GetViewport();
+        if (viewport != null) viewport.PhysicsObjectPicking = active;
+    }
+
     private void OnPickToken(int index, Button button, string description)
     {
         var session = GetNode<GameSession>("/root/GameSession");
         session.SelectedTokenIndex = index;
-        _board.SetToken(TokenCatalog.All[index]());
+        _board.SetToken(index);
         _description.Text = description;
 
         if (_selectedButton != null && _selectedButton != button)

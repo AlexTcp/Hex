@@ -147,15 +147,19 @@ public partial class DebugModal : Control
 
     public void Open()
     {
+        if (Visible) return;
         Visible = true;
         MouseFilter = MouseFilterEnum.Stop;
+        DebugLog.PushModal();
         Refresh();
     }
 
     private void Close()
     {
+        if (!Visible) return;
         Visible = false;
         MouseFilter = MouseFilterEnum.Ignore;
+        DebugLog.PopModal();
     }
 
     private void Refresh()

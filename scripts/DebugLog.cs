@@ -20,11 +20,28 @@
 
 #nullable enable
 using Godot;
+using System;
 using System.Collections.Generic;
 
 public partial class DebugLog : Node
 {
     public static DebugLog? Instance { get; private set; }
+
+    public static event Action<bool>? GameplayActiveChanged;
+    private static int _modalDepth;
+
+    public static void PushModal()
+    {
+        if (++_modalDepth == 1) GameplayActiveChanged?.Invoke(false);
+    }
+
+    public static void PopModal()
+    {
+        if (_modalDepth == 0) return;
+        if (--_modalDepth == 0) GameplayActiveChanged?.Invoke(true);
+    }
+
+    public static bool IsAnyModalOpen => _modalDepth > 0;
 
     private const int MaxEntries = 500;
     private const int OverlayLayer = 128;

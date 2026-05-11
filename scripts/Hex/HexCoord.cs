@@ -23,9 +23,9 @@ public readonly struct HexCoord : IEquatable<HexCoord>
 {
     public readonly int Q;
     public readonly int R;
-    public int S => -Q - R;
+    public readonly int S;
 
-    public HexCoord(int q, int r) { Q = q; R = r; }
+    public HexCoord(int q, int r) { Q = q; R = r; S = -q - r; }
 
     public static readonly HexCoord Zero = new(0, 0);
 

@@ -33,6 +33,10 @@ public partial class HexBoard : Node3D
     private HexCoord _tokenPos = HexCoord.Zero;
     private bool _selected = false;
     private readonly HashSet<HexCoord> _highlighted = new();
+    private readonly List<HexCoord> _movesBuffer = new(32);
+    private Token _lastSelectedToken;
+    private HexCoord _lastSelectedPos;
+    private bool _selectionValid = false;
 
     private static readonly Color TileColorA = new(0.32f, 0.34f, 0.40f);
     private static readonly Color TileColorB = new(0.42f, 0.44f, 0.50f);
@@ -54,18 +58,25 @@ public partial class HexBoard : Node3D
         GD.Print($"[HexBoard] _Ready done, tiles={_tiles.Count}");
     }
 
-    public void SetToken(Token token)
+    public void SetToken(int index)
     {
+        ClearHighlights();
+        _selected = false;
+        _selectionValid = false;
+        _lastSelectedToken = null;
+        _tokenPos = HexCoord.Zero;
+
         if (_token != null)
         {
+            _token.SetProcessInput(false);
+            _token.SetProcessUnhandledInput(false);
+            _token.ProcessMode = ProcessModeEnum.Disabled;
             _token.QueueFree();
             _token = null;
         }
-        ClearHighlights();
-        _selected = false;
-        _tokenPos = HexCoord.Zero;
-        if (token == null) return;
-        _token = token;
+
+        if (index < 0 || index >= TokenCatalog.All.Length) return;
+        _token = TokenCatalog.All[index].Factory();
         AddChild(_token);
         _token.Position = HexLayout.ToWorld(_tokenPos, 0.35f);
     }
@@ -153,6 +164,8 @@ public partial class HexBoard : Node3D
             return;
         }
 
+        if (coord == _tokenPos) return;
+
         if (_highlighted.Contains(coord))
         {
             MoveTokenTo(coord);
@@ -166,14 +179,25 @@ public partial class HexBoard : Node3D
 
     private void BeginSelect()
     {
+        if (_selectionValid && _lastSelectedToken == _token && _lastSelectedPos == _tokenPos)
+        {
+            _selected = true;
+            return;
+        }
+
         _selected = true;
         _highlighted.Clear();
-        foreach (var dest in _token.LegalMoves(_tokenPos, Radius))
+        _token.LegalMoves(_tokenPos, Radius, _movesBuffer);
+        for (int i = 0; i < _movesBuffer.Count; i++)
         {
-            if (!_tiles.ContainsKey(dest)) continue;
+            var dest = _movesBuffer[i];
+            if (!_tiles.TryGetValue(dest, out var tile)) continue;
             _highlighted.Add(dest);
-            _tiles[dest].Mesh.MaterialOverride = _tiles[dest].HighlightMaterial;
+            tile.Mesh.MaterialOverride = tile.HighlightMaterial;
         }
+        _lastSelectedToken = _token;
+        _lastSelectedPos = _tokenPos;
+        _selectionValid = true;
     }
 
     private void EndSelect()
@@ -188,11 +212,13 @@ public partial class HexBoard : Node3D
             if (_tiles.TryGetValue(h, out var t))
                 t.Mesh.MaterialOverride = t.BaseMaterial;
         _highlighted.Clear();
+        _selectionValid = false;
     }
 
     private void MoveTokenTo(HexCoord coord)
     {
         _tokenPos = coord;
+        _selectionValid = false;
         var target = HexLayout.ToWorld(coord, 0.35f);
         var tween = CreateTween();
         tween.TweenProperty(_token, "position", target, 0.18f)

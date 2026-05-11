@@ -3,11 +3,13 @@
 // =============================================================================
 // Purpose:
 //   Abstract partial Node3D base class for all movable game pieces. Defines
-//   the contract for token identity (Id, DisplayName, Description), legal
-//   movement generation (LegalMoves), and visual appearance (CreateMesh /
-//   GetColor). Builds the visual MeshInstance3D in _Ready using the
-//   subclass-supplied mesh and color, and offers a Filter helper to drop
-//   the origin tile and any hex outside the board radius.
+//   the contract for token identity (Id), legal movement generation
+//   (LegalMoves, which fills a caller-supplied buffer to avoid per-call
+//   allocations), and visual appearance (CreateMesh / GetColor). Builds the
+//   visual MeshInstance3D in _Ready using the subclass-supplied mesh and
+//   color, and offers a Filter helper to drop the origin tile and any hex
+//   outside the board radius. Display names and descriptions live in
+//   TokenCatalog so the picker UI can read them without instantiating tokens.
 //
 // Interactions:
 //   - HexCoord: used as the input/output coordinate type for LegalMoves and
@@ -27,9 +29,7 @@ namespace HexGame.Tokens;
 public abstract partial class Token : Node3D
 {
     public abstract string Id { get; }
-    public abstract string DisplayName { get; }
-    public abstract string Description { get; }
-    public abstract IEnumerable<HexCoord> LegalMoves(HexCoord from, int boardRadius);
+    public abstract void LegalMoves(HexCoord from, int boardRadius, List<HexCoord> output);
 
     protected abstract Mesh CreateMesh();
     protected abstract Color GetColor();
@@ -56,13 +56,16 @@ public abstract partial class Token : Node3D
         };
     }
 
-    protected static IEnumerable<HexCoord> Filter(IEnumerable<HexCoord> hexes, HexCoord from, int boardRadius)
+    protected static void Filter(List<HexCoord> moves, HexCoord from, int boardRadius)
     {
-        foreach (var h in hexes)
+        int write = 0;
+        for (int read = 0; read < moves.Count; read++)
         {
+            var h = moves[read];
             if (h == from) continue;
             if (h.DistanceFromOrigin() > boardRadius) continue;
-            yield return h;
+            moves[write++] = h;
         }
+        if (write < moves.Count) moves.RemoveRange(write, moves.Count - write);
     }
 }

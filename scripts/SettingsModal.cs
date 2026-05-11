@@ -110,6 +110,7 @@ public partial class SettingsModal : Control
     {
         if (_open || _drawer == null || _scrim == null) return;
         _open = true;
+        DebugLog.PushModal();
         Visible = true;
         MouseFilter = MouseFilterEnum.Stop;
 
@@ -131,6 +132,7 @@ public partial class SettingsModal : Control
     {
         if (!_open || _drawer == null || _scrim == null) return;
         _open = false;
+        DebugLog.PopModal();
 
         if (_slide != null && _slide.IsValid()) _slide.Kill();
         _slide = CreateTween().SetParallel(true);
