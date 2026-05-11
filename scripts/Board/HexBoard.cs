@@ -33,7 +33,7 @@ public partial class HexBoard : Node3D
     private HexCoord _tokenPos = HexCoord.Zero;
     private bool _selected = false;
     private readonly HashSet<HexCoord> _highlighted = new();
-    private readonly List<HexCoord> _movesBuffer = new(32);
+    private readonly List<HexCoord> _movesBuffer = new(64);
     private Token _lastSelectedToken;
     private HexCoord _lastSelectedPos;
     private bool _selectionValid = false;
