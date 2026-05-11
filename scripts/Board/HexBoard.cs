@@ -73,6 +73,7 @@ public partial class HexBoard : Node3D
         public StandardMaterial3D BaseMaterial;
         public StandardMaterial3D HighlightMaterial;
         public Area3D Area;
+        public Callable InputHandler;
     }
 
     public override void _Ready()
@@ -153,9 +154,24 @@ public partial class HexBoard : Node3D
         tile.Area = new Area3D { Position = HexLayout.ToWorld(coord) };
         tile.Area.AddChild(tile.Mesh);
         tile.Area.AddChild(collision);
-        tile.Area.InputEvent += (camera, e, pos, normal, idx) => OnTileInput(coord, e);
+        var captured = coord;
+        tile.InputHandler = Callable.From(
+            (Node camera, InputEvent e, Vector3 pos, Vector3 normal, long idx) => OnTileInput(captured, e));
+        tile.Area.Connect(Area3D.SignalName.InputEvent, tile.InputHandler);
 
         return tile;
+    }
+
+    public override void _ExitTree()
+    {
+        foreach (var kv in _tiles)
+        {
+            var tile = kv.Value;
+            if (tile.Area != null && IsInstanceValid(tile.Area))
+            {
+                tile.Area.Disconnect(Area3D.SignalName.InputEvent, tile.InputHandler);
+            }
+        }
     }
 
     private void OnTileInput(HexCoord coord, InputEvent e)
