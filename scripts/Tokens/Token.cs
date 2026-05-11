@@ -31,15 +31,15 @@ public abstract partial class Token : Node3D
     public abstract string Id { get; }
     public abstract void LegalMoves(HexCoord from, int boardRadius, List<HexCoord> output);
 
-    protected abstract Mesh CreateMesh();
-    protected abstract Color GetColor();
+    protected abstract Mesh GetSharedMesh();
+    protected abstract StandardMaterial3D GetSharedMaterial();
 
     public override void _Ready()
     {
         var visual = new MeshInstance3D
         {
-            Mesh = CreateMesh(),
-            MaterialOverride = MakeMaterial(GetColor()),
+            Mesh = GetSharedMesh(),
+            MaterialOverride = GetSharedMaterial(),
         };
         AddChild(visual);
     }

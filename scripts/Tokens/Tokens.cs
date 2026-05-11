@@ -40,8 +40,10 @@ public sealed partial class Walker : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new CylinderMesh { TopRadius = 0.22f, BottomRadius = 0.28f, Height = 0.45f };
-    protected override Color GetColor() => Colors.White;
+    private static readonly Mesh SharedMesh = new CylinderMesh { TopRadius = 0.22f, BottomRadius = 0.28f, Height = 0.45f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(Colors.White);
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Runner : Token
@@ -65,8 +67,10 @@ public sealed partial class Runner : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new CylinderMesh { TopRadius = 0.18f, BottomRadius = 0.22f, Height = 0.85f };
-    protected override Color GetColor() => new Color(0.2f, 0.55f, 1f);
+    private static readonly Mesh SharedMesh = new CylinderMesh { TopRadius = 0.18f, BottomRadius = 0.22f, Height = 0.85f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.2f, 0.55f, 1f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Jumper : Token
@@ -82,8 +86,10 @@ public sealed partial class Jumper : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new SphereMesh { Radius = 0.28f, Height = 0.56f };
-    protected override Color GetColor() => new Color(1f, 0.25f, 0.25f);
+    private static readonly Mesh SharedMesh = new SphereMesh { Radius = 0.28f, Height = 0.56f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(1f, 0.25f, 0.25f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Knight : Token
@@ -105,8 +111,10 @@ public sealed partial class Knight : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new BoxMesh { Size = new Vector3(0.45f, 0.45f, 0.45f) };
-    protected override Color GetColor() => new Color(1f, 0.85f, 0.1f);
+    private static readonly Mesh SharedMesh = new BoxMesh { Size = new Vector3(0.45f, 0.45f, 0.45f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(1f, 0.85f, 0.1f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Stepper : Token
@@ -120,8 +128,10 @@ public sealed partial class Stepper : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new CylinderMesh { TopRadius = 0.0f, BottomRadius = 0.3f, Height = 0.6f };
-    protected override Color GetColor() => new Color(0.3f, 0.85f, 0.35f);
+    private static readonly Mesh SharedMesh = new CylinderMesh { TopRadius = 0.0f, BottomRadius = 0.3f, Height = 0.6f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.3f, 0.85f, 0.35f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Spiral : Token
@@ -136,8 +146,10 @@ public sealed partial class Spiral : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new TorusMesh { InnerRadius = 0.15f, OuterRadius = 0.32f };
-    protected override Color GetColor() => new Color(1f, 0.2f, 0.85f);
+    private static readonly Mesh SharedMesh = new TorusMesh { InnerRadius = 0.15f, OuterRadius = 0.32f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(1f, 0.2f, 0.85f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Mirror : Token
@@ -151,8 +163,10 @@ public sealed partial class Mirror : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new CapsuleMesh { Radius = 0.2f, Height = 0.7f };
-    protected override Color GetColor() => new Color(0.2f, 0.95f, 0.95f);
+    private static readonly Mesh SharedMesh = new CapsuleMesh { Radius = 0.2f, Height = 0.7f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.2f, 0.95f, 0.95f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Ringwalk : Token
@@ -168,8 +182,10 @@ public sealed partial class Ringwalk : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new BoxMesh { Size = new Vector3(0.28f, 0.75f, 0.28f) };
-    protected override Color GetColor() => new Color(1f, 0.55f, 0.1f);
+    private static readonly Mesh SharedMesh = new BoxMesh { Size = new Vector3(0.28f, 0.75f, 0.28f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(1f, 0.55f, 0.1f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Charger : Token
@@ -183,8 +199,10 @@ public sealed partial class Charger : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new PrismMesh { Size = new Vector3(0.5f, 0.6f, 0.4f) };
-    protected override Color GetColor() => new Color(0.95f, 0.4f, 0.1f);
+    private static readonly Mesh SharedMesh = new PrismMesh { Size = new Vector3(0.5f, 0.6f, 0.4f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.95f, 0.4f, 0.1f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Diamond : Token
@@ -200,8 +218,10 @@ public sealed partial class Diamond : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new BoxMesh { Size = new Vector3(0.32f, 0.55f, 0.32f) };
-    protected override Color GetColor() => new Color(0.4f, 0.75f, 1f);
+    private static readonly Mesh SharedMesh = new BoxMesh { Size = new Vector3(0.32f, 0.55f, 0.32f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.4f, 0.75f, 1f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Orbit : Token
@@ -219,8 +239,10 @@ public sealed partial class Orbit : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new TorusMesh { InnerRadius = 0.22f, OuterRadius = 0.4f };
-    protected override Color GetColor() => new Color(0.7f, 0.3f, 0.95f);
+    private static readonly Mesh SharedMesh = new TorusMesh { InnerRadius = 0.22f, OuterRadius = 0.4f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.7f, 0.3f, 0.95f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Edge : Token
@@ -235,8 +257,10 @@ public sealed partial class Edge : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new BoxMesh { Size = new Vector3(0.6f, 0.18f, 0.6f) };
-    protected override Color GetColor() => new Color(0.7f, 0.78f, 0.85f);
+    private static readonly Mesh SharedMesh = new BoxMesh { Size = new Vector3(0.6f, 0.18f, 0.6f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.7f, 0.78f, 0.85f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Anchor : Token
@@ -250,8 +274,10 @@ public sealed partial class Anchor : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new CapsuleMesh { Radius = 0.28f, Height = 0.5f };
-    protected override Color GetColor() => new Color(0.15f, 0.25f, 0.65f);
+    private static readonly Mesh SharedMesh = new CapsuleMesh { Radius = 0.28f, Height = 0.5f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.15f, 0.25f, 0.65f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Echo : Token
@@ -267,8 +293,10 @@ public sealed partial class Echo : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new PrismMesh { Size = new Vector3(0.5f, 0.35f, 0.5f) };
-    protected override Color GetColor() => new Color(1f, 0.95f, 0.5f);
+    private static readonly Mesh SharedMesh = new PrismMesh { Size = new Vector3(0.5f, 0.35f, 0.5f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(1f, 0.95f, 0.5f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Pivot : Token
@@ -287,8 +315,10 @@ public sealed partial class Pivot : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new TorusMesh { InnerRadius = 0.05f, OuterRadius = 0.35f };
-    protected override Color GetColor() => new Color(0.2f, 0.75f, 0.6f);
+    private static readonly Mesh SharedMesh = new TorusMesh { InnerRadius = 0.05f, OuterRadius = 0.35f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.2f, 0.75f, 0.6f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Skipper : Token
@@ -302,8 +332,10 @@ public sealed partial class Skipper : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new CylinderMesh { TopRadius = 0.12f, BottomRadius = 0.12f, Height = 1.0f };
-    protected override Color GetColor() => new Color(0.2f, 0.55f, 0.25f);
+    private static readonly Mesh SharedMesh = new CylinderMesh { TopRadius = 0.12f, BottomRadius = 0.12f, Height = 1.0f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.2f, 0.55f, 0.25f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Drifter : Token
@@ -318,8 +350,10 @@ public sealed partial class Drifter : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new SphereMesh { Radius = 0.34f, Height = 0.5f };
-    protected override Color GetColor() => new Color(1f, 0.7f, 0.8f);
+    private static readonly Mesh SharedMesh = new SphereMesh { Radius = 0.34f, Height = 0.5f };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(1f, 0.7f, 0.8f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
 
 public sealed partial class Shrine : Token
@@ -333,6 +367,8 @@ public sealed partial class Shrine : Token
         Filter(output, from, boardRadius);
     }
 
-    protected override Mesh CreateMesh() => new BoxMesh { Size = new Vector3(0.5f, 0.4f, 0.5f) };
-    protected override Color GetColor() => new Color(0.65f, 0.1f, 0.1f);
+    private static readonly Mesh SharedMesh = new BoxMesh { Size = new Vector3(0.5f, 0.4f, 0.5f) };
+    private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(new Color(0.65f, 0.1f, 0.1f));
+    protected override Mesh GetSharedMesh() => SharedMesh;
+    protected override StandardMaterial3D GetSharedMaterial() => SharedMaterial;
 }
