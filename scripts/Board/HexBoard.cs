@@ -43,6 +43,29 @@ public partial class HexBoard : Node3D
     private static readonly Color TileColorC = new(0.52f, 0.54f, 0.60f);
     private static readonly Color HighlightColor = new(0.95f, 0.85f, 0.30f);
 
+    private static readonly StandardMaterial3D TileMaterialA = new()
+    {
+        AlbedoColor = TileColorA,
+        Roughness = 0.7f,
+    };
+    private static readonly StandardMaterial3D TileMaterialB = new()
+    {
+        AlbedoColor = TileColorB,
+        Roughness = 0.7f,
+    };
+    private static readonly StandardMaterial3D TileMaterialC = new()
+    {
+        AlbedoColor = TileColorC,
+        Roughness = 0.7f,
+    };
+    private static readonly StandardMaterial3D HighlightMaterialShared = new()
+    {
+        AlbedoColor = HighlightColor,
+        Emission = HighlightColor * 0.6f,
+        EmissionEnabled = true,
+        Roughness = 0.5f,
+    };
+
     private sealed class Tile
     {
         public HexCoord Coord;
@@ -99,24 +122,13 @@ public partial class HexBoard : Node3D
         var tile = new Tile { Coord = coord };
 
         var checker = ((coord.Q - coord.R) % 3 + 3) % 3;
-        var baseColor = checker switch
+        tile.BaseMaterial = checker switch
         {
-            0 => TileColorA,
-            1 => TileColorB,
-            _ => TileColorC,
+            0 => TileMaterialA,
+            1 => TileMaterialB,
+            _ => TileMaterialC,
         };
-        tile.BaseMaterial = new StandardMaterial3D
-        {
-            AlbedoColor = baseColor,
-            Roughness = 0.7f,
-        };
-        tile.HighlightMaterial = new StandardMaterial3D
-        {
-            AlbedoColor = HighlightColor,
-            Emission = HighlightColor * 0.6f,
-            EmissionEnabled = true,
-            Roughness = 0.5f,
-        };
+        tile.HighlightMaterial = HighlightMaterialShared;
 
         var hexMesh = new CylinderMesh
         {
