@@ -169,3 +169,7 @@ Lambdas are captured by value at subscription. Because tiles live for the lifeti
 - Step 6 — Precompute checker index for tile colour selection: ⊘ skipped optional
 
 Final build: green
+
+Follow-up pass (2026-05-10 evening):
+- Step 5 — Disconnect `Area3D.InputEvent` lambdas on shutdown: ✓ applied
+- Step 6 — Precompute checker index for tile colour selection: ✓ applied
