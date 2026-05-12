@@ -44,25 +44,19 @@ mouse_filter = 2
 layout_mode = 1
 anchor_top = 0.0
 anchor_bottom = 1.0
-offset_right = 280.0
-custom_minimum_size = Vector2(280, 0)
+offset_right = 640.0
+custom_minimum_size = Vector2(640, 0)
 
 [node name="Margin" type="MarginContainer" parent="UI/Root/LeftPanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
+theme_override_constants/margin_left = 128
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 128
+theme_override_constants/margin_bottom = 0
 
 [node name="VBox" type="VBoxContainer" parent="UI/Root/LeftPanel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Title" type="Label" parent="UI/Root/LeftPanel/Margin/VBox"]
-layout_mode = 2
-text = "Tokens"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 28
+theme_override_constants/separation = 20
 
 [node name="Scroll" type="ScrollContainer" parent="UI/Root/LeftPanel/Margin/VBox"]
 layout_mode = 2

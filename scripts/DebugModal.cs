@@ -201,7 +201,12 @@ public partial class DebugModal : Control
 
     private void OnDimInput(InputEvent ev)
     {
+        bool dismissed = false;
         if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+            dismissed = true;
+        else if (ev is InputEventScreenTouch st && st.Pressed)
+            dismissed = true;
+        if (dismissed)
         {
             Close();
             AcceptEvent();

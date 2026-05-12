@@ -90,6 +90,20 @@ public partial class HexBoard : Node3D
         GD.Print($"[HexBoard] _Ready done, tiles={_tiles.Count}");
     }
 
+    public override void _Input(InputEvent @event)
+    {
+        if (@event is InputEventScreenTouch st)
+        {
+            var vp = GetViewport();
+            GD.Print($"[DIAG-IN] touch pressed={st.Pressed} idx={st.Index} pos={st.Position} picking={vp?.PhysicsObjectPicking} tiles={_tiles.Count}");
+        }
+        else if (@event is InputEventMouseButton mb)
+        {
+            var vp = GetViewport();
+            GD.Print($"[DIAG-IN] mouse pressed={mb.Pressed} btn={mb.ButtonIndex} pos={mb.Position} picking={vp?.PhysicsObjectPicking}");
+        }
+    }
+
     public void SetToken(int index)
     {
         ClearHighlights();
@@ -179,17 +193,21 @@ public partial class HexBoard : Node3D
 
     private void OnTileInput(HexCoord coord, InputEvent e)
     {
+        if (e is InputEventMouseButton || e is InputEventScreenTouch)
+            GD.Print($"[DIAG-TILE] coord=({coord.Q},{coord.R}) type={e.GetType().Name}");
         bool clicked = false;
         if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             clicked = true;
         else if (e is InputEventScreenTouch st && st.Pressed)
             clicked = true;
         if (!clicked) return;
+        GD.Print($"[DIAG-TILE] -> tapped coord=({coord.Q},{coord.R})");
         OnTileTapped(coord);
     }
 
     private void OnTileTapped(HexCoord coord)
     {
+        GD.Print($"[DIAG-TAP] coord=({coord.Q},{coord.R}) tokenNull={_token == null} selected={_selected} tokenPos=({_tokenPos.Q},{_tokenPos.R})");
         if (_token == null) return;
 
         if (!_selected)

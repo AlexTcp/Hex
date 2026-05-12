@@ -44,6 +44,8 @@ public partial class GameScreen : Node3D
         _board = GetNode<HexBoard>(BoardPath);
         _description = GetNode<Label>(DescriptionPath);
         var list = GetNode<VBoxContainer>(TokenListPath);
+        var scroll = list.GetParent<ScrollContainer>();
+        scroll.GetVScrollBar().CustomMinimumSize = new Vector2(24, 0);
 
         for (int i = 0; i < TokenCatalog.All.Length; i++)
         {
@@ -53,10 +55,11 @@ public partial class GameScreen : Node3D
             var button = new Button
             {
                 Text = info.Name,
-                CustomMinimumSize = new Vector2(0, 40),
+                CustomMinimumSize = new Vector2(0, 80),
                 ToggleMode = true,
                 Alignment = HorizontalAlignment.Left,
             };
+            button.AddThemeFontSizeOverride("font_size", 32);
             button.Pressed += () => OnPickToken(index, button, description);
             list.AddChild(button);
         }
@@ -73,6 +76,7 @@ public partial class GameScreen : Node3D
     {
         var viewport = GetViewport();
         if (viewport != null) viewport.PhysicsObjectPicking = active;
+        GD.Print($"[DIAG-GATE] active={active} anyModalOpen={DebugLog.IsAnyModalOpen} picking={viewport?.PhysicsObjectPicking}");
     }
 
     private void OnPickToken(int index, Button button, string description)
