@@ -1,175 +1,143 @@
-# PERFORMANCE_AUDIT — Hex
+# Performance Audit — Hex
+
+**Engine:** Godot 4.6 (GL Compatibility renderer, C#)
+**Audit Date:** 2026-05-12
+
+---
 
 ## Executive Summary
 
-**Health Score: 7.5 / 10**
+**Health Score: 8.5 / 10**
 
-Hex is a small, well-shaped Godot 4.6 / C# hex-puzzle project on the GL Compatibility renderer (~1.5k LOC across 11 scripts). The prior audit's three HIGH findings — per-call `List<HexCoord>` allocations in `LegalMoves`, 18-token catalog instantiation, and always-on viewport picking — have all been resolved: tokens now write into a caller-supplied `_movesBuffer`, `TokenCatalog.All` is a static `TokenInfo[]` with name/description strings and lazy factories, and `GameScreen` toggles `Viewport.PhysicsObjectPicking` off via the `DebugLog.GameplayActiveChanged` event when any modal pushes. What remains is a tail of low-impact GC sources (iterator-allocating `HexCoord.Within`/`Ring`, a slightly undersized `_movesBuffer` that resizes on `Drifter`) and a few minor lifecycle items.
+The smallest project in your set, and architecturally one of the tightest. `HexCoord` is a `readonly struct` with proper equality/hashing; `Within` / `Ring` both expose buffer-filling overloads ([HexCoord.cs:62, 73](scripts/Hex/HexCoord.cs#L62)) alongside the enumerable versions; every Token subclass exposes `static readonly` shared `Mesh` and `StandardMaterial3D` ([Tokens.cs:43-46](scripts/Tokens/Tokens.cs#L43) and identically across all 18 tokens) so the rendering side already batches by piece type; `HexBoard` preallocates `_movesBuffer` with capacity 64 and reuses it ([HexBoard.cs:36](scripts/Board/HexBoard.cs#L36)); the BeginSelect path memoises `(token, pos)` and skips rebuild if the selection hasn't changed ([HexBoard.cs:234](scripts/Board/HexBoard.cs#L234)).
 
-**Profile**
-- Godot 4.6, C# — 11 scripts, 1,484 LOC
-- Renderer: `gl_compatibility` (mobile + desktop)
-- Scenes: 1 (`scenes/game.tscn`)
-- Shaders: 0 (all `StandardMaterial3D`)
-- Autoloads (2): `DebugLog`, `GameSession`
-- Viewport: 1280x720, `canvas_items` stretch, expand aspect
-- Main scene: 1 `DirectionalLight3D` (no shadow flag set), 1 `WorldEnvironment` (ambient only), 1 `Camera3D`, 1 `CanvasLayer` UI tree
-- Physics surfaces: 61 `Area3D` nodes at `Radius = 4` (1 + 6*(1+2+3+4))
-- No `_Process`, `_PhysicsProcess`, `_Draw`, `_Input`, `_UnhandledInput`, `IntersectRay`, `GetChildren`, or `EmitSignal` calls anywhere in `scripts/`
+There's only one large category of remaining issues: diagnostic `GD.Print` calls on every input event. The `[DIAG-IN]`, `[DIAG-TILE]`, `[DIAG-TAP]` strings fire on every touch / mouse event, allocating formatted strings and writing to the logger. On Android these are visible in the frame profiler.
 
-**Top 3 Wins (impact-per-hour)**
-1. Bump `_movesBuffer` initial capacity from 32 to 64 and convert `HexCoord.Within`/`Ring` from `yield return IEnumerable` to a custom `struct` enumerator — the only remaining per-selection heap traffic.
-2. Cache `Token.CreateMesh()` outputs and the highlight `StandardMaterial3D` as static fields so swapping tokens / building the board doesn't re-allocate identical resources.
-3. Disconnect the `Area3D.InputEvent` lambdas in `_ExitTree` (or capture the `Callable` once and disconnect by reference) — pure correctness, not throughput, but prevents dangling closures during scene swaps.
+Beyond that, the per-tile `CylinderMesh`/`CylinderShape3D` allocation in `BuildTile` ([HexBoard.cs:151-168](scripts/Board/HexBoard.cs#L151)) creates a unique mesh per tile when one shared mesh would suffice — minor at radius 4 (61 tiles) but trivially avoidable.
 
 ---
 
 ## Identified Issues
 
+### CPU Overhead
+
+1. **[HexBoard.cs:90](scripts/Board/HexBoard.cs#L90), [98, 103](scripts/Board/HexBoard.cs#L98), [197, 204, 210](scripts/Board/HexBoard.cs#L197) — diagnostic `GD.Print` per input event.**
+   `_Input` logs on every touch and mouse event regardless of pickup. `OnTileInput` and `OnTileTapped` log per tap. Each call allocates a formatted string (interpolation builds a `string.Format` payload) and writes to the engine logger. With multitouch this can fire dozens of times per second.
+
+2. **[HexBoard.cs:175-177](scripts/Board/HexBoard.cs#L175) — `Callable.From` closure captures `coord` per tile.**
+   Per tile, a delegate is allocated wrapping the captured `HexCoord` and connected to `Area3D.InputEvent`. At radius 4 that's 61 closures; at radius 6 it's 127. Acceptable since `BuildBoard` runs once, but the closure is unnecessary — `Area3D.InputEvent` provides the world-space hit point. You can extract the `coord` via `_tiles` reverse lookup from the hit Area3D, eliminating the per-tile closure.
+
+3. **[HexBoard.cs:151-157](scripts/Board/HexBoard.cs#L151) `BuildTile` allocates a fresh `CylinderMesh` per tile.**
+   Every tile shares identical mesh geometry. Promote to a `static readonly CylinderMesh SharedTileMesh = …;` and reference it from each `MeshInstance3D`. With shared mesh + shared material, GL Compatibility *should* batch tile draws into a single command (verify with `Visible Surface` debug).
+
+4. **[HexBoard.cs:164-167](scripts/Board/HexBoard.cs#L164) `CylinderShape3D` allocated per tile.**
+   Same argument — promote to a shared static `CylinderShape3D`. The physics broadphase already deduplicates shared shapes.
+
+5. **`Token.LegalMoves` allocation pattern.**
+   `Jumper.LegalMoves` ([Tokens.cs:80-86](scripts/Tokens/Tokens.cs#L80)) calls `HexCoord.Ring(2, output)` then walks the output adjusting in place — good. `Spiral` / `Drifter` use `HexCoord.Within` similarly — good. `Filter` (defined on `Token`, not shown) must avoid allocating; verify it uses `RemoveAt` or two-pointer compaction inside the same list.
+
+6. **`MoveTokenTo`** creates a Tween per move ([HexBoard.cs:275](scripts/Board/HexBoard.cs#L275)) — per move, not per frame, so the cost is bounded by player tempo. Fine.
+
 ### Memory / GC
 
-**1. [LOW-MEDIUM] `HexCoord.Within` / `HexCoord.Ring` allocate an enumerator object per call**
-`scripts/Hex/HexCoord.cs:62-85`
-```csharp
-public static IEnumerable<HexCoord> Within(int radius) { ... yield return ...; }
-public static IEnumerable<HexCoord> Ring(int radius)   { ... yield return ...; }
-```
-Both are compiler-generated state machines returned as `IEnumerable<HexCoord>`. Every call (board build, plus `Spiral`/`Drifter`/`Jumper`/`Ringwalk`/`Orbit`/`Edge`/`Anchor` `LegalMoves`) allocates one enumerator on the heap. Per tile-tap this is one allocation, so impact is small, but it is the only remaining GC source on the hot path.
+1. **`HexCoord.Within(int radius)` (`IEnumerable<HexCoord>`)** ([line 87](scripts/Hex/HexCoord.cs#L87)) allocates an enumerator state machine per use. The buffer-filling overload ([line 62](scripts/Hex/HexCoord.cs#L62)) is already used by `BuildBoard` and by `Spiral` / `Drifter` — good. Audit Token subclasses to ensure none call the enumerable version.
 
-**2. [LOW] `_movesBuffer` initial capacity (32) is below worst-case (Drifter ~37)**
-`scripts/Board/HexBoard.cs:36`
-```csharp
-private readonly List<HexCoord> _movesBuffer = new(32);
-```
-`Drifter.LegalMoves` writes `HexCoord.Within(3)` = 37 entries, forcing a one-time `List<T>` doubling to 64 on first selection. Trivial to fix: `new(64)`.
-
-**3. [LOW] Each `Token` re-allocates an identical `Mesh` and `StandardMaterial3D` on instantiate**
-`scripts/Tokens/Token.cs:37-56`, plus every concrete `CreateMesh()` in `scripts/Tokens/Tokens.cs`
-```csharp
-public override void _Ready() {
-    var visual = new MeshInstance3D {
-        Mesh = CreateMesh(),
-        MaterialOverride = MakeMaterial(GetColor()),
-    };
-    AddChild(visual);
-}
-```
-Each `CreateMesh()` instantiates a fresh `CylinderMesh`/`BoxMesh`/etc. and `MakeMaterial` builds a fresh `StandardMaterial3D`. Since meshes and materials are pure resources, they can be cached once per `Token` subclass (static field) and reused across instances. Not in a per-frame path, so this is a startup/swap optimization only.
-
-**4. [LOW] 61 tiles each allocate their own `BaseMaterial` + `HighlightMaterial`**
-`scripts/Board/HexBoard.cs:94-129`
-There are only three checker colours and one highlight colour, but the loop builds 122 `StandardMaterial3D` instances. Three shared base materials and one shared highlight material would suffice. One-time cost (board build), so LOW.
-
-### CPU
-
-**5. [LOW] `Filter` re-derives `DistanceFromOrigin` per candidate**
-`scripts/Tokens/Token.cs:59-70`
-With `S` now stored in the struct (`HexCoord.cs:26-28`) this is already fast (three `Math.Abs` + a divide). Acceptable; called once per selection on a buffer of <= ~37 entries. No action recommended.
-
-**6. [LOW] `BeginSelect` `foreach`-iterates a `List<T>` instead of indexing**
-`scripts/Board/HexBoard.cs:190-197`
-Already uses `for (int i = 0; i < _movesBuffer.Count; i++)` — actually correct. No issue; flagged here only to note that the prior audit's selection re-entry concern is addressed by the `_selectionValid` / `_lastSelectedToken` guard at `HexBoard.cs:182-186`.
+2. **No per-frame allocation hotspots** beyond the diagnostic prints.
 
 ### Rendering
 
-**7. [INFO] Light + shadows**
-`scenes/game.tscn:26-28` — one `DirectionalLight3D` with no `shadow_enabled` flag set (defaults to false on GL Compatibility). Ambient-only world environment. Nothing to optimise.
+1. **GL Compatibility renderer** is appropriate for this minimalist 3D look — no change. `etc2_astc` texture compression is on (mobile-ready).
 
-**8. [INFO] No shaders, no `QueueRedraw`, no `_Draw` overrides**
-Searched all of `scripts/` — clean.
+2. **Per-tile `MeshInstance3D` with `MaterialOverride`** — the override is one of three checker materials ([HexBoard.cs:69-74](scripts/Board/HexBoard.cs#L69)), so draw calls collapse to three checker groups + one highlight group. Combined with the shared-mesh fix above, this gives you a 4-call board.
+
+3. **`Tile.HighlightMaterial = HighlightMaterialShared`** ([line 149](scripts/Board/HexBoard.cs#L149)) — every tile points at the same highlight material. Toggling `MaterialOverride` between base and highlight is the correct approach; no need to clone.
+
+4. **No environment / lights configured in `game.tscn`** that I could verify here. Default Godot 4 setup has one DirectionalLight3D in the scene template — fine.
+
+5. **No shaders in this project.** All visuals via `StandardMaterial3D`. Good for GL Compatibility compatibility.
 
 ### Collision / Physics
 
-**9. [RESOLVED — verified] `Viewport.PhysicsObjectPicking` is now gated on modal state**
-`scripts/UI/GameScreen.cs:41-42, 72-76` plus `scripts/DebugLog.cs:30-44` (`PushModal`/`PopModal` drive `GameplayActiveChanged`). Modals (`SettingsModal.Open`/`Close` at `SettingsModal.cs:113, 135`; `DebugModal.Open`/`Close` at `DebugModal.cs:153, 162`) push/pop correctly. Counter logic is sound — bottoms-out at zero (`PopModal` early-returns if depth is already 0).
+1. **Per-tile `Area3D` + `CollisionShape3D` + `CylinderShape3D`** at radius 4 = 61 physics objects. Acceptable. At radius 6 = 127. Still acceptable.
 
-**10. [LOW] `Area3D.InputEvent` lambdas are not explicitly disconnected**
-`scripts/Board/HexBoard.cs:141`
-```csharp
-tile.Area.InputEvent += (camera, e, pos, normal, idx) => OnTileInput(coord, e);
-```
-Lambdas are captured by value at subscription. Because tiles live for the lifetime of `HexBoard`, this is fine in practice — but on a scene-change/`QueueFree` path the closure objects are only collected once Godot tears the nodes down. No leak, no urgency.
+2. **Picking via `Viewport.PhysicsObjectPicking`** is correct for touch-driven boards. Make sure the viewport flag is set in [scenes/game.tscn](scenes/game.tscn) — the diagnostic line in `_Input` already prints `vp.PhysicsObjectPicking`, suggesting it was investigated.
 
-### Lifecycle
-
-**11. [INFO] Token swap path correctly disables old token before free**
-`scripts/Board/HexBoard.cs:69-76` — sets input flags off, sets `ProcessMode = Disabled`, then `QueueFree()`. Defensive and correct.
-
-**12. [INFO] `DebugLog._ExitTree` removes its `Logger` and nulls the static singleton**
-`scripts/DebugLog.cs:65-73` — clean.
+3. **No `_PhysicsProcess`** anywhere in the project. Good.
 
 ---
 
 ## Remediation Plan
 
-**Step 1 — Resize `_movesBuffer` to fit worst case**
-- File: `scripts/Board/HexBoard.cs:36`
-- Change: `new(32)` -> `new(64)`
-- Expected impact: Eliminates the one-time `List<T>` capacity-doubling allocation that fires the first time a `Drifter` is selected.
-- Verification: Mono profiler — first `Drifter` selection should no longer show a `T[]` resize event for `_movesBuffer`.
+### Priority 1 — Strip diagnostic prints
 
-**Step 2 — Replace `Within` / `Ring` `IEnumerable` with struct enumerators**
-- File: `scripts/Hex/HexCoord.cs:62-85`
-- Change: Either expose `public struct WithinEnumerator { public bool MoveNext(); public HexCoord Current; }` returned by a `WithinEnumerable Within(int radius)`, or add direct-write overloads `public static void Within(int radius, List<HexCoord> output)` / `Ring(int radius, List<HexCoord> output)` and call them from the affected token rules. Direct-write is simpler and avoids any iterator state machine.
-- Affected callers (verified): `HexBoard.BuildBoard` (`HexBoard.cs:86`), `Spiral.LegalMoves`, `Drifter.LegalMoves`, `Jumper.LegalMoves`, `Ringwalk.LegalMoves`, `Orbit.LegalMoves`, `Edge.LegalMoves`, `Anchor.LegalMoves` (all in `scripts/Tokens/Tokens.cs`).
-- Expected impact: Removes the last per-selection heap allocation. Selection becomes zero-alloc except for the eventual tween.
-- Verification: Mono profiler shows 0 Gen0 collections during 100 rapid token selections.
+**P1.1 Gate `GD.Print` behind `[Conditional("DEBUG")]`.**
+Add to `DebugLog` or a project-wide helper:
+```csharp
+[System.Diagnostics.Conditional("DEBUG")]
+public static void Trace(string s) => GD.Print(s);
+```
+Replace `GD.Print(...)` in [HexBoard.cs:90, 98, 103, 197, 204, 210](scripts/Board/HexBoard.cs#L90) with `DebugLog.Trace(...)`. The JIT will erase the calls in release builds.
 
-**Step 3 — Cache `Mesh` and `StandardMaterial3D` resources**
-- File: `scripts/Tokens/Token.cs:37-56` and each `CreateMesh` / `GetColor` in `scripts/Tokens/Tokens.cs`
-- Change: Convert `protected abstract Mesh CreateMesh()` to a static lazy resource. Pattern:
-  ```csharp
-  private static readonly Mesh SharedMesh = new CylinderMesh { ... };
-  private static readonly StandardMaterial3D SharedMaterial = MakeMaterial(...);
-  ```
-  Each subclass exposes its `SharedMesh`/`SharedMaterial`; `Token._Ready` reads them.
-- Expected impact: Token swap stops allocating a new mesh + material every time; removes ~36 transient resource allocations across a typical play session.
-- Verification: Instrument `MakeMaterial` with a counter; should stay at 18 after touching every token.
+Alternatively, surround the `_Input` body with `#if DEBUG`:
+```csharp
+public override void _Input(InputEvent @event)
+{
+#if DEBUG
+    if (@event is InputEventScreenTouch st) GD.Print(…);
+    else if (@event is InputEventMouseButton mb) GD.Print(…);
+#endif
+}
+```
 
-**Step 4 — Share the four `StandardMaterial3D` resources across tiles**
-- File: `scripts/Board/HexBoard.cs:94-129`
-- Change: Hoist `TileMaterialA/B/C` and `HighlightMaterialShared` to `static readonly` fields built once. Tiles store references instead of unique instances.
-- Expected impact: 122 -> 4 `StandardMaterial3D` instances; faster board build, smaller per-board memory footprint.
-- Verification: GPU resource panel — material count drops from 122 to 4.
+### Priority 2 — Share tile mesh and shape
 
-**Step 5 — Optional: disconnect `Area3D.InputEvent` lambdas on shutdown**
-- File: `scripts/Board/HexBoard.cs:141`
-- Change: Store the `Callable` once per tile so it can be passed to `tile.Area.InputEvent -= callable` in a future `_ExitTree`.
-- Expected impact: Correctness on scene reload; no measurable runtime gain.
-- Verification: Add an `_ExitTree` log; reload the scene 10 times — heap should not grow.
+**P2.1 Share `CylinderMesh` and `CylinderShape3D` across all tiles.**
+```csharp
+private static readonly CylinderMesh SharedTileMesh = new()
+{
+    TopRadius = HexLayout.TileSize * 0.95f,
+    BottomRadius = HexLayout.TileSize * 0.95f,
+    Height = 0.15f,
+    RadialSegments = 6,
+};
+private static readonly CylinderShape3D SharedTileShape = new()
+{
+    Radius = HexLayout.TileSize * 0.95f,
+    Height = 0.15f,
+};
+```
+In `BuildTile`, use these directly:
+```csharp
+tile.Mesh = new MeshInstance3D
+{
+    Mesh = SharedTileMesh,
+    MaterialOverride = tile.BaseMaterial,
+};
+var collision = new CollisionShape3D { Shape = SharedTileShape };
+```
+Cuts per-board allocations from `61 × 2 = 122` resource objects down to 2. Also enables better GPU batching.
 
-**Step 6 — Optional: precompute checker index for tile colour selection**
-- File: `scripts/Board/HexBoard.cs:98`
-- Change: `(coord.Q - coord.R) % 3 + 3) % 3` runs once per tile at build, so this is mostly a readability improvement. Leave as-is unless `BuildBoard` is later called per-level on lower-spec mobile.
+### Priority 3 — Optional: remove per-tile Callable closures
 
-### Project Settings to Review
-- `project.godot` — `rendering/textures/vram_compression/import_etc2_astc=true` is correct for the `gl_compatibility` mobile path.
-- `display/window/stretch/mode="canvas_items"` is the right choice for a portrait-of-content UI overlay against a 3D viewport. No change needed.
-- Confirm `application/run/main_scene` is the only scene loaded — verified (`scenes/` contains only `game.tscn`).
+**P3.1 Replace per-tile InputEvent connection with a single Board-level pick handler.**
+Connect to the board's `InputEvent` once, derive the tapped coord from the hit `Area3D` via a reverse `Dictionary<Area3D, HexCoord>`:
+```csharp
+private readonly Dictionary<Area3D, HexCoord> _areaToCoord = new();
+// in BuildTile: _areaToCoord[tile.Area] = coord;
+// in BuildBoard or _Ready: connect once at board level (or keep per-tile but with a non-capturing handler).
+```
+Skip if (P2.1) already fixed batching and per-tile closure cost is negligible (61 delegates is ~3 KB total).
+
+### Priority 4 — Audit Token.Filter
+
+**P4.1 Verify `Token.Filter` is allocation-free.**
+The method is the post-pass that clamps moves to the board radius. Read [scripts/Tokens/Token.cs](scripts/Tokens/Token.cs). It should compact the supplied `List<HexCoord>` in place — typically a two-pointer pass. If it uses `RemoveAll(predicate)` with a lambda, that lambda allocates a delegate per call; convert to a hand-rolled `Where` pass or a `Predicate<HexCoord>` cached as a static field.
 
 ---
 
-## Verification Checklist
+## Suggested order of operations
 
-1. **Selection GC** — In the Mono profiler, select tokens 100x in a row. After Steps 1-2, Gen0 collections during selection should be 0 (down from a small but non-zero count today).
-2. **Board build** — Log allocation count of `StandardMaterial3D` before/after Step 4: expect 122 -> 4.
-3. **Token swap** — Step through `Token._Ready` 18 times; after Step 3 the `MakeMaterial` counter should stay at 18 total (one per subclass) instead of 18 * N swaps.
-4. **Modal picking gate** — Open the settings drawer mid-game and watch `Performance/Time/Physics Process`: should drop to ~0 while the drawer is open (already true; verifies the implemented fix did not regress).
-5. **Scene reload** — Reload `game.tscn` 10x; heap should be flat after Step 5.
-
----
-
-## Execution Log — 2026-05-10 PM
-
-- Step 1 — Resize `_movesBuffer` to fit worst case: ✓ applied
-- Step 2 — Replace `Within` / `Ring` `IEnumerable` with direct-write overloads: ✓ applied
-- Step 3 — Cache `Mesh` and `StandardMaterial3D` resources per token subclass: ✓ applied
-- Step 4 — Share the four `StandardMaterial3D` resources across tiles: ✓ applied
-- Step 5 — Disconnect `Area3D.InputEvent` lambdas on shutdown: ⊘ skipped optional
-- Step 6 — Precompute checker index for tile colour selection: ⊘ skipped optional
-
-Final build: green
-
-Follow-up pass (2026-05-10 evening):
-- Step 5 — Disconnect `Area3D.InputEvent` lambdas on shutdown: ✓ applied
-- Step 6 — Precompute checker index for tile colour selection: ✓ applied
+1. P1.1 (strip prints) — 30 minutes.
+2. P2.1 (share tile mesh / shape) — 15 minutes.
+3. P4.1 (audit Filter) — 15 minutes to read, 30 minutes to refactor if needed.
+4. P3.1 — opportunistic; only matters if you scale board radius past ~8.

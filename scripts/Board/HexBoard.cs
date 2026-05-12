@@ -73,6 +73,22 @@ public partial class HexBoard : Node3D
         TileMaterialC,
     };
 
+    // Shared across every tile — geometry is identical, so a single Mesh + Shape3D
+    // resource keeps Godot's renderer/physics dedup happy and avoids 61 redundant
+    // resource allocations per board build.
+    private static readonly CylinderMesh SharedTileMesh = new()
+    {
+        TopRadius = HexLayout.TileSize * 0.95f,
+        BottomRadius = HexLayout.TileSize * 0.95f,
+        Height = 0.15f,
+        RadialSegments = 6,
+    };
+    private static readonly CylinderShape3D SharedTileShape = new()
+    {
+        Radius = HexLayout.TileSize * 0.95f,
+        Height = 0.15f,
+    };
+
     private sealed class Tile
     {
         public HexCoord Coord;
@@ -87,11 +103,14 @@ public partial class HexBoard : Node3D
     public override void _Ready()
     {
         BuildBoard();
+#if DEBUG
         GD.Print($"[HexBoard] _Ready done, tiles={_tiles.Count}");
+#endif
     }
 
     public override void _Input(InputEvent @event)
     {
+#if DEBUG
         if (@event is InputEventScreenTouch st)
         {
             var vp = GetViewport();
@@ -102,6 +121,7 @@ public partial class HexBoard : Node3D
             var vp = GetViewport();
             GD.Print($"[DIAG-IN] mouse pressed={mb.Pressed} btn={mb.ButtonIndex} pos={mb.Position} picking={vp?.PhysicsObjectPicking}");
         }
+#endif
     }
 
     public void SetToken(int index)
@@ -148,25 +168,13 @@ public partial class HexBoard : Node3D
         tile.BaseMaterial = TileMaterialsByChecker[checker];
         tile.HighlightMaterial = HighlightMaterialShared;
 
-        var hexMesh = new CylinderMesh
-        {
-            TopRadius = HexLayout.TileSize * 0.95f,
-            BottomRadius = HexLayout.TileSize * 0.95f,
-            Height = 0.15f,
-            RadialSegments = 6,
-        };
         tile.Mesh = new MeshInstance3D
         {
-            Mesh = hexMesh,
+            Mesh = SharedTileMesh,
             MaterialOverride = tile.BaseMaterial,
         };
 
-        var shape = new CylinderShape3D
-        {
-            Radius = HexLayout.TileSize * 0.95f,
-            Height = 0.15f,
-        };
-        var collision = new CollisionShape3D { Shape = shape };
+        var collision = new CollisionShape3D { Shape = SharedTileShape };
 
         tile.Area = new Area3D { Position = HexLayout.ToWorld(coord) };
         tile.Area.AddChild(tile.Mesh);
@@ -193,21 +201,27 @@ public partial class HexBoard : Node3D
 
     private void OnTileInput(HexCoord coord, InputEvent e)
     {
+#if DEBUG
         if (e is InputEventMouseButton || e is InputEventScreenTouch)
             GD.Print($"[DIAG-TILE] coord=({coord.Q},{coord.R}) type={e.GetType().Name}");
+#endif
         bool clicked = false;
         if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             clicked = true;
         else if (e is InputEventScreenTouch st && st.Pressed)
             clicked = true;
         if (!clicked) return;
+#if DEBUG
         GD.Print($"[DIAG-TILE] -> tapped coord=({coord.Q},{coord.R})");
+#endif
         OnTileTapped(coord);
     }
 
     private void OnTileTapped(HexCoord coord)
     {
+#if DEBUG
         GD.Print($"[DIAG-TAP] coord=({coord.Q},{coord.R}) tokenNull={_token == null} selected={_selected} tokenPos=({_tokenPos.Q},{_tokenPos.R})");
+#endif
         if (_token == null) return;
 
         if (!_selected)
