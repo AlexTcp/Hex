@@ -1,143 +1,95 @@
-# Performance Audit — Hex
+# Performance Audit — Hex (GDScript Scope)
 
-**Engine:** Godot 4.6 (GL Compatibility renderer, C#)
-**Audit Date:** 2026-05-12
-
----
+**Engine:** Godot 4.6 (GL Compatibility renderer, C# project)
+**Audit Date:** 2026-05-15
 
 ## Executive Summary
 
-**Health Score: 8.5 / 10**
+**Health Score: 8/10**
 
-The smallest project in your set, and architecturally one of the tightest. `HexCoord` is a `readonly struct` with proper equality/hashing; `Within` / `Ring` both expose buffer-filling overloads ([HexCoord.cs:62, 73](scripts/Hex/HexCoord.cs#L62)) alongside the enumerable versions; every Token subclass exposes `static readonly` shared `Mesh` and `StandardMaterial3D` ([Tokens.cs:43-46](scripts/Tokens/Tokens.cs#L43) and identically across all 18 tokens) so the rendering side already batches by piece type; `HexBoard` preallocates `_movesBuffer` with capacity 64 and reuses it ([HexBoard.cs:36](scripts/Board/HexBoard.cs#L36)); the BeginSelect path memoises `(token, pos)` and skips rebuild if the selection hasn't changed ([HexBoard.cs:234](scripts/Board/HexBoard.cs#L234)).
+The Hex project is primarily a **C# Godot 4 project**; the only `.gd` files reside under `android/build/src/instrumented/assets/` and are Godot's shipped Android plugin **instrumented test scaffolding** (not gameplay code). They contain no `_process` / `_physics_process` hot paths, no rendering or physics work, and run only during Android plugin test invocation. Identified issues are minor: redundant `Engine.get_singleton` and `JavaClassWrapper.wrap` calls (each is a cross-language / dictionary lookup) which have been cached.
 
-There's only one large category of remaining issues: diagnostic `GD.Print` calls on every input event. The `[DIAG-IN]`, `[DIAG-TILE]`, `[DIAG-TAP]` strings fire on every touch / mouse event, allocating formatted strings and writing to the logger. On Android these are visible in the frame profiler.
+## Files Audited
 
-Beyond that, the per-tile `CylinderMesh`/`CylinderShape3D` allocation in `BuildTile` ([HexBoard.cs:151-168](scripts/Board/HexBoard.cs#L151)) creates a unique mesh per tile when one shared mesh would suffice — minor at radius 4 (61 tiles) but trivially avoidable.
+| File | LOC | Backup |
+|------|-----|--------|
+| `D:/Hex/android/build/src/instrumented/assets/main.gd` | 62 | `main.gd.bak` |
+| `D:/Hex/android/build/src/instrumented/assets/test/base_test.gd` | 52 | `base_test.gd.bak` |
+| `D:/Hex/android/build/src/instrumented/assets/test/file_access/file_access_tests.gd` | 84 | `file_access_tests.gd.bak` |
+| `D:/Hex/android/build/src/instrumented/assets/test/javaclasswrapper/java_class_wrapper_tests.gd` | 171 | `java_class_wrapper_tests.gd.bak` |
 
----
+Total: 4 files, 369 LOC. 3 files patched, 1 unchanged (`base_test.gd` — no perf issues).
+
+## Fixes Applied
+
+1. **`main.gd`** — Resolved `Engine.get_singleton("AndroidRuntime")` once in `_ready` into `_android_runtime`; both `_on_vibration_button_pressed` and `_on_gd_script_toast_button_pressed` now reuse the cached reference instead of re-resolving the singleton on every button press.
+2. **`file_access_tests.gd`** — Added `_get_android_runtime()` and `_get_environment_class()` lazy caches for the `AndroidRuntime` singleton and the `android.os.Environment` `JavaClass`; six test methods now use cached lookups instead of repeating singleton/wrap calls.
+3. **`java_class_wrapper_tests.gd`** — Added member-level `_TestClass` / `_TestClass2` / `_TestClass3` caches via `_get_test_class*()` helpers; eight test methods that previously each called `JavaClassWrapper.wrap('com.godot.game.test.javaclasswrapper.TestClass')` now share a single wrapped reference, reducing JNI class lookups during test runs.
+
+All original behaviour, comments, and control flow are preserved. Every original file was backed up to `<file>.gd.bak` prior to editing.
+
+## Project Settings Recommendations
+
+The project's `project.godot` is consistent with a mobile / low-spec target — `gl_compatibility` renderer on both desktop and `.mobile`, ETC2/ASTC VRAM compression enabled, landscape orientation, expand stretch. Suggestions:
+
+- **`application/run/low_processor_mode`** — consider enabling for the UI-only menus / debug modals to reduce idle CPU draw on Android.
+- **`physics/2d/run_on_separate_thread`** — only relevant if the gameplay (C# `Hex/`, `Tokens/`, `Board/`) does heavy physics work; defer until profiling shows main-thread physics cost.
+- **`rendering/textures/canvas_textures/default_texture_filter`** — set to *Nearest* if Hex artwork is pixel-art (saves bilinear sampling cost on mobile GPUs).
+- **`rendering/limits/opengl/max_renderable_elements`** — default is fine; revisit if board tile counts grow.
+- **`debug/settings/stdout/verbose_stdout`** — ensure disabled for release exports.
+- The autoloads `DebugLog` and `GameSession` are C# — consider that on Android the .NET runtime startup is the largest single startup cost; pre-cache scenes via `ResourceLoader.load_threaded_request` from C# if cold-start is profiled as slow.
+
+These project-settings notes are advisory; no `project.godot` changes were applied since the audit scope is GDScript files.
 
 ## Identified Issues
 
-### CPU Overhead
+### CPU
 
-1. **[HexBoard.cs:90](scripts/Board/HexBoard.cs#L90), [98, 103](scripts/Board/HexBoard.cs#L98), [197, 204, 210](scripts/Board/HexBoard.cs#L197) — diagnostic `GD.Print` per input event.**
-   `_Input` logs on every touch and mouse event regardless of pickup. `OnTileInput` and `OnTileTapped` log per tap. Each call allocates a formatted string (interpolation builds a `string.Format` payload) and writes to the engine logger. With multitouch this can fire dozens of times per second.
+- **[3/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:36` — `Engine.get_singleton("AndroidRuntime")` called per button press in `_on_vibration_button_pressed`. Singleton lookup is a hashed dictionary access on every invocation.
+  *Fix applied:* cached in `_android_runtime` during `_ready`.
+- **[3/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:54` — Same pattern in `_on_gd_script_toast_button_pressed`.
+  *Fix applied:* uses cached `_android_runtime`.
+- **[2/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:43` — `JavaClassWrapper.wrap("android.os.VibrationEffect")` called per vibration press. Wrap is a JNI class lookup.
+  *Flagged only:* button is invoked rarely; caching across presses would add member state that the original template intentionally keeps local. Safe to leave.
+- **[2/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:59` — `JavaClassWrapper.wrap("android.widget.Toast")` inside a `Callable` captured for `runOnUiThread`. Per-press JNI lookup on the UI thread.
+  *Flagged only:* moving the wrap out of the lambda is logically fine but risks the wrapped reference being used cross-thread; conservative choice is to leave it.
+- **[4/10]** `D:/Hex/android/build/src/instrumented/assets/test/javaclasswrapper/java_class_wrapper_tests.gd:29,42,53,63,82,119,127,128,129,145,154` — `JavaClassWrapper.wrap('...TestClass')` (and `TestClass2` / `TestClass3`) repeated across 8+ test functions; each `wrap` performs a JNI `FindClass` equivalent.
+  *Fix applied:* introduced `_TestClass` / `_TestClass2` / `_TestClass3` lazy caches with `_get_test_class*()` accessors; all repeat sites now reuse them.
+- **[3/10]** `D:/Hex/android/build/src/instrumented/assets/test/file_access/file_access_tests.gd:39,48,57,66` — `Engine.get_singleton("AndroidRuntime")` called per test method (4 test methods).
+  *Fix applied:* `_get_android_runtime()` lazy cache.
+- **[3/10]** `D:/Hex/android/build/src/instrumented/assets/test/file_access/file_access_tests.gd:75,81` — `JavaClassWrapper.wrap("android.os.Environment")` called twice in close succession.
+  *Fix applied:* `_get_environment_class()` lazy cache.
+- **[2/10]** `D:/Hex/android/build/src/instrumented/assets/test/base_test.gd:23` — `__get_stack_frame` calls `get_stack()` and linearly scans it. `get_stack()` is moderately expensive (debug-only API).
+  *Flagged only:* invoked only on assertion failure paths; not hot. Changing it would alter diagnostic behaviour.
 
-2. **[HexBoard.cs:175-177](scripts/Board/HexBoard.cs#L175) — `Callable.From` closure captures `coord` per tile.**
-   Per tile, a delegate is allocated wrapping the captured `HexCoord` and connected to `Area3D.InputEvent`. At radius 4 that's 61 closures; at radius 6 it's 127. Acceptable since `BuildBoard` runs once, but the closure is unnecessary — `Area3D.InputEvent` provides the world-space hit point. You can extract the `coord` via `_tiles` reverse lookup from the hit Area3D, eliminating the per-tile closure.
+### Memory
 
-3. **[HexBoard.cs:151-157](scripts/Board/HexBoard.cs#L151) `BuildTile` allocates a fresh `CylinderMesh` per tile.**
-   Every tile shares identical mesh geometry. Promote to a `static readonly CylinderMesh SharedTileMesh = …;` and reference it from each `MeshInstance3D`. With shared mesh + shared material, GL Compatibility *should* batch tile draws into a single command (verify with `Visible Surface` debug).
-
-4. **[HexBoard.cs:164-167](scripts/Board/HexBoard.cs#L164) `CylinderShape3D` allocated per tile.**
-   Same argument — promote to a shared static `CylinderShape3D`. The physics broadphase already deduplicates shared shapes.
-
-5. **`Token.LegalMoves` allocation pattern.**
-   `Jumper.LegalMoves` ([Tokens.cs:80-86](scripts/Tokens/Tokens.cs#L80)) calls `HexCoord.Ring(2, output)` then walks the output adjusting in place — good. `Spiral` / `Drifter` use `HexCoord.Within` similarly — good. `Filter` (defined on `Token`, not shown) must avoid allocating; verify it uses `RemoveAt` or two-pointer compaction inside the same list.
-
-6. **`MoveTokenTo`** creates a Tween per move ([HexBoard.cs:275](scripts/Board/HexBoard.cs#L275)) — per move, not per frame, so the cost is bounded by player tempo. Fine.
-
-### Memory / GC
-
-1. **`HexCoord.Within(int radius)` (`IEnumerable<HexCoord>`)** ([line 87](scripts/Hex/HexCoord.cs#L87)) allocates an enumerator state machine per use. The buffer-filling overload ([line 62](scripts/Hex/HexCoord.cs#L62)) is already used by `BuildBoard` and by `Spiral` / `Drifter` — good. Audit Token subclasses to ensure none call the enumerable version.
-
-2. **No per-frame allocation hotspots** beyond the diagnostic prints.
+- **[2/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:14-28` — `_launch_tests` constructs a new `BaseTest`-derived instance per request and does not free it. Test instances are RefCounted, so they will be cleaned up when references go out of scope; behaviour is correct but flagged for awareness.
+  *Flagged only:* no pool needed — tests run once per Android plugin invocation.
+- **[1/10]** `D:/Hex/android/build/src/instrumented/assets/test/javaclasswrapper/java_class_wrapper_tests.gd:54-57,137-138` — Per-call `Array[Object]` allocations passed to `testMethod` / `testObjectOverloadArray`.
+  *Flagged only:* test-only allocations; not a hot path.
 
 ### Rendering
 
-1. **GL Compatibility renderer** is appropriate for this minimalist 3D look — no change. `etc2_astc` texture compression is on (mobile-ready).
+- No GDScript-side rendering work observed. `main.gd` extends `Node2D` but performs no drawing; rendering is driven by the scene (`scenes/game.tscn`) and C# code.
+  *Flagged only:* nothing actionable in GDScript scope.
 
-2. **Per-tile `MeshInstance3D` with `MaterialOverride`** — the override is one of three checker materials ([HexBoard.cs:69-74](scripts/Board/HexBoard.cs#L69)), so draw calls collapse to three checker groups + one highlight group. Combined with the shared-mesh fix above, this gives you a 4-call board.
+### Physics
 
-3. **`Tile.HighlightMaterial = HighlightMaterialShared`** ([line 149](scripts/Board/HexBoard.cs#L149)) — every tile points at the same highlight material. Toggling `MaterialOverride` between base and highlight is the correct approach; no need to clone.
+- No `_physics_process` overrides and no physics queries in any audited `.gd` file.
+  *Flagged only:* nothing actionable in GDScript scope.
 
-4. **No environment / lights configured in `game.tscn`** that I could verify here. Default Godot 4 setup has one DirectionalLight3D in the scene template — fine.
+### Architecture
 
-5. **No shaders in this project.** All visuals via `StandardMaterial3D`. Good for GL Compatibility compatibility.
+- **[3/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:9` — `_android_plugin.connect("launch_tests", _launch_tests)` has no matching disconnect; if `main.gd` ever exited the tree before the plugin, the callable would leak. In practice this scene lives for the app lifetime.
+  *Flagged only:* not worth a teardown hook for a single root-scene script.
+- **[3/10]** `D:/Hex/android/build/src/instrumented/assets/main.gd:6-12` — `_ready` calls `get_tree().quit()` on missing plugin; acceptable for a test harness but couples the main scene to a debug singleton.
+  *Flagged only:* this is test-harness scaffolding intentionally tied to the plugin.
+- **[2/10]** `D:/Hex/android/build/src/instrumented/assets/test/base_test.gd` — `BaseTest` is a `@abstract class_name` without `extends`. With Godot 4.6 this is valid (RefCounted by default) but means test instances are reference-counted; cheap, just noted.
+  *Flagged only:* no change.
+- **[2/10]** `D:/Hex/android/build/src/instrumented/assets/test/javaclasswrapper/java_class_wrapper_tests.gd` and `file_access_tests.gd` — These files are part of Godot's shipped Android build template under `android/build/`. Edits will be overwritten the next time the user re-installs the Android build template from the editor.
+  *Flagged only:* user requested in-place fixes; recommend keeping `.bak` files and re-applying after template re-install.
 
-### Collision / Physics
+## Notes on the Project as a Whole
 
-1. **Per-tile `Area3D` + `CollisionShape3D` + `CylinderShape3D`** at radius 4 = 61 physics objects. Acceptable. At radius 6 = 127. Still acceptable.
-
-2. **Picking via `Viewport.PhysicsObjectPicking`** is correct for touch-driven boards. Make sure the viewport flag is set in [scenes/game.tscn](scenes/game.tscn) — the diagnostic line in `_Input` already prints `vp.PhysicsObjectPicking`, suggesting it was investigated.
-
-3. **No `_PhysicsProcess`** anywhere in the project. Good.
-
----
-
-## Remediation Plan
-
-### Priority 1 — Strip diagnostic prints
-
-**P1.1 Gate `GD.Print` behind `[Conditional("DEBUG")]`.**
-Add to `DebugLog` or a project-wide helper:
-```csharp
-[System.Diagnostics.Conditional("DEBUG")]
-public static void Trace(string s) => GD.Print(s);
-```
-Replace `GD.Print(...)` in [HexBoard.cs:90, 98, 103, 197, 204, 210](scripts/Board/HexBoard.cs#L90) with `DebugLog.Trace(...)`. The JIT will erase the calls in release builds.
-
-Alternatively, surround the `_Input` body with `#if DEBUG`:
-```csharp
-public override void _Input(InputEvent @event)
-{
-#if DEBUG
-    if (@event is InputEventScreenTouch st) GD.Print(…);
-    else if (@event is InputEventMouseButton mb) GD.Print(…);
-#endif
-}
-```
-
-### Priority 2 — Share tile mesh and shape
-
-**P2.1 Share `CylinderMesh` and `CylinderShape3D` across all tiles.**
-```csharp
-private static readonly CylinderMesh SharedTileMesh = new()
-{
-    TopRadius = HexLayout.TileSize * 0.95f,
-    BottomRadius = HexLayout.TileSize * 0.95f,
-    Height = 0.15f,
-    RadialSegments = 6,
-};
-private static readonly CylinderShape3D SharedTileShape = new()
-{
-    Radius = HexLayout.TileSize * 0.95f,
-    Height = 0.15f,
-};
-```
-In `BuildTile`, use these directly:
-```csharp
-tile.Mesh = new MeshInstance3D
-{
-    Mesh = SharedTileMesh,
-    MaterialOverride = tile.BaseMaterial,
-};
-var collision = new CollisionShape3D { Shape = SharedTileShape };
-```
-Cuts per-board allocations from `61 × 2 = 122` resource objects down to 2. Also enables better GPU batching.
-
-### Priority 3 — Optional: remove per-tile Callable closures
-
-**P3.1 Replace per-tile InputEvent connection with a single Board-level pick handler.**
-Connect to the board's `InputEvent` once, derive the tapped coord from the hit `Area3D` via a reverse `Dictionary<Area3D, HexCoord>`:
-```csharp
-private readonly Dictionary<Area3D, HexCoord> _areaToCoord = new();
-// in BuildTile: _areaToCoord[tile.Area] = coord;
-// in BuildBoard or _Ready: connect once at board level (or keep per-tile but with a non-capturing handler).
-```
-Skip if (P2.1) already fixed batching and per-tile closure cost is negligible (61 delegates is ~3 KB total).
-
-### Priority 4 — Audit Token.Filter
-
-**P4.1 Verify `Token.Filter` is allocation-free.**
-The method is the post-pass that clamps moves to the board radius. Read [scripts/Tokens/Token.cs](scripts/Tokens/Token.cs). It should compact the supplied `List<HexCoord>` in place — typically a two-pointer pass. If it uses `RemoveAll(predicate)` with a lambda, that lambda allocates a delegate per call; convert to a hand-rolled `Where` pass or a `Predicate<HexCoord>` cached as a static field.
-
----
-
-## Suggested order of operations
-
-1. P1.1 (strip prints) — 30 minutes.
-2. P2.1 (share tile mesh / shape) — 15 minutes.
-3. P4.1 (audit Filter) — 15 minutes to read, 30 minutes to refactor if needed.
-4. P3.1 — opportunistic; only matters if you scale board radius past ~8.
+The bulk of `D:/Hex` is **C# code** (`scripts/Board`, `scripts/Hex`, `scripts/Tokens`, `scripts/UI`, plus autoloads `DebugLog.cs` and `GameSession.cs`). This audit's GDScript scope therefore does not cover gameplay performance. For a full project audit, a C#-focused pass over `scripts/` would be needed (allocations per frame, `_Process` overrides, signal connections, node lookups via `GetNode<T>` caching, etc.).
