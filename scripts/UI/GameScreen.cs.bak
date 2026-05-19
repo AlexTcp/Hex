@@ -35,7 +35,6 @@ public partial class GameScreen : Node3D
     private HexBoard _board;
     private Label _description;
     private Button _selectedButton;
-    private GameSession _session;
 
     public override void _Ready()
     {
@@ -44,7 +43,6 @@ public partial class GameScreen : Node3D
 
         _board = GetNode<HexBoard>(BoardPath);
         _description = GetNode<Label>(DescriptionPath);
-        _session = GetNode<GameSession>("/root/GameSession");
         var list = GetNode<VBoxContainer>(TokenListPath);
         var scroll = list.GetParent<ScrollContainer>();
         scroll.GetVScrollBar().CustomMinimumSize = new Vector2(24, 0);
@@ -83,7 +81,8 @@ public partial class GameScreen : Node3D
 
     private void OnPickToken(int index, Button button, string description)
     {
-        _session.SelectedTokenIndex = index;
+        var session = GetNode<GameSession>("/root/GameSession");
+        session.SelectedTokenIndex = index;
         _board.SetToken(index);
         _description.Text = description;
 
