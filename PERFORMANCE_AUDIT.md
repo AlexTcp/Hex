@@ -5,79 +5,77 @@
 **Profiler data provided:** None
 **Build verified:** Yes (`dotnet build` clean, 0 warnings, 0 errors)
 **Runtime verified:** No (static analysis only)
-**Score qualification:** Reflects static-analysis confidence, not measured performance. Target device class is BOTH desktop and mobile (mobile-tier constraints applied).
+**Score qualification:** Reflects static-analysis confidence, not measured performance.
 
 ## Health Score: 8.5/10
 
-Codebase is unusually clean for an audit pass: all meshes/materials are shared `static readonly` resources, allocation hot paths use reusable buffers (`_movesBuffer`, `Within(int, List<HexCoord>)`, `Ring(int, List<HexCoord>)`), input handlers are guarded behind `#if DEBUG`, and per-frame `_Process`/`_PhysicsProcess` overrides are absent entirely. Game is turn-based (input-driven only), so static analysis finds little to optimize. Most remaining items are configuration-tier hypotheses for mobile rather than CPU/allocation issues.
+Hex is a small turn-based hex puzzle game with a tight, well-factored codebase. The per-frame attack surface is essentially zero — there are no `_Process` or `_PhysicsProcess` overrides in any project script, and the only `_Input` handler is guarded by `#if DEBUG`. Token meshes and materials are already cached as shared static fields, tile mesh/shape resources are shared across all 61 tiles, and the move-buffer list is pre-sized and reused. The remaining findings are minor mobile-tuning hypotheses (physics tick rate, autoload count) rather than concrete inefficiencies.
 
 ## Fixes Applied
 
-- `scripts/UI/GameScreen.cs` — cached `GameSession` autoload as a private field in `_Ready` instead of resolving `/root/GameSession` on every token-button press. [.bak preserved]
+_No automatic patches were applied._
+
+The conservative-fix criteria (per skill) did not match any site in this codebase: no `GetNode`/`Load`/LINQ/string-build in confirmed hot paths, no print calls in non-`#if DEBUG` per-frame methods, no obvious shadow/MSAA misconfiguration. Pre-existing `.bak` files (e.g. `scripts/UI/GameScreen.cs.bak`) were left untouched.
 
 ## Identified Issues (hypotheses; verify with profiler before further work)
 
 ### CPU
-- **[3/10]** `scripts/UI/GameScreen.cs:84` (pre-fix) — `GetNode<GameSession>("/root/GameSession")` was re-resolved on every `OnPickToken` call. User-triggered, not per-frame, so impact is small.
-  - *Fix applied:* cached as `_session` field, resolved once in `_Ready`.
-
-- **[2/10]** `scripts/UI/GameScreen.cs:67` — `_Ready` final `GD.Print` interpolates camera name and viewport size; each Variant-boxed arg. One-shot, no concern, but noisy logging at startup. Not patched (no clear behavior-preserving rule on whether the log is intentional diagnostics).
-
-- **[2/10]** `scripts/Board/HexBoard.cs:111-125, 202-217, 220-244` — multiple `GD.Print` calls in `_Input`, `OnTileInput`, `OnTileTapped`. All correctly wrapped in `#if DEBUG`, so release builds are clean. No fix needed; flagging for awareness.
+- **[2/10]** `scripts/Board/HexBoard.cs:111-125` — `_Input` does `GetViewport()` plus string interpolation inside `GD.Print` on every touch/mouse event. **Guarded by `#if DEBUG`**, so it is not a release hot path. No action needed unless DEBUG builds are profiled and these logs dominate.
+- **[2/10]** `scripts/Board/HexBoard.cs:202-217` — `OnTileInput` does the same DEBUG-only logging on every tile pick event. Again `#if DEBUG`, not in release.
+- **[2/10]** `scripts/UI/GameScreen.cs:81` — `GD.Print` in `SetGameplayActive` runs on every modal open/close. Not per-frame; user-driven. Low cost. Could be removed for production cleanliness, but behavior-affecting (people may rely on the diagnostic) so left as-is per the conservative rule.
 
 ### Memory
-- **[2/10]** `scripts/Board/HexBoard.cs:182-185` — `Callable.From(...)` lambda captures `coord` per tile inside `BuildTile`. Allocates one closure per tile (61 at radius 4). One-shot at board build; trivial cost. Could be refactored to a single dispatch by `coord` lookup keyed off the `Area3D` instance, but the change is not mechanical (would require equating sender to coord through a dictionary), so left as-is.
+- **[2/10]** `scripts/UI/GameScreen.cs:65` — `button.Pressed += () => OnPickToken(index, button, description);` allocates 18 capturing closures during `_Ready`. One-time cost at scene load, not per-frame. Not worth refactoring.
+- **[3/10]** `scripts/Board/HexBoard.cs:183-185` — `Callable.From(...)` with a captured `coord` is allocated per tile during `BuildBoard` (~61 tiles at `Radius=4`). One-time at scene load.
 
 ### Rendering
-- **[N/A]** Scene `scenes/game.tscn` is well-formed: a single `DirectionalLight3D` with `shadow_enabled` unset (defaults to false — good for mobile). No MSAA enabled. No particles. `WorldEnvironment` uses simple ambient — minimal cost.
-
-- **[5/10]** *Hypothesis (mobile):* `DirectionalLight3D` with `light_energy=1.1` is fine, but the renderer is `gl_compatibility`, which does not support `DirectionalLight3D` shadows in the same way as Forward+. If the visual depends on lighting subtlety, verify on target device. Not patched.
+- No issues identified. `gl_compatibility` renderer + single `DirectionalLight3D` (no shadow_enabled) + a single shared environment is mobile-appropriate. No MSAA configured (defaults off on `gl_compatibility`).
 
 ### Physics
-- **[4/10]** `project.godot` — no `physics/common/physics_ticks_per_second` override; defaults to 60 Hz. The game is turn-based with no `_PhysicsProcess` overrides in any script, so 60 Hz of physics is wasted. Lowering to 30 Hz (or even 20 Hz) would save battery on mobile.
-  - *Fix not applied:* changing physics tick rate is a project-wide setting; even though no code uses physics directly, the `Area3D` input picking uses physics queries. Tap responsiveness could degrade subtly. Recommend manual change + on-device verification.
+- **[3/10]** `project.godot` does not set `physics/common/physics_ticks_per_second`, so the engine defaults to 60. This is a turn-based picker game with no rigid bodies — physics ticks are only used by `Area3D` input picking. Lowering to 30 Hz would save CPU on mobile. **Hypothesis only**; not patched because behavior-preservation isn't certain (`Area3D` input picking responsiveness depends on tick rate).
 
 ### Architecture
-- **[2/10]** `scripts/DebugLog.cs:75-83` — `Append` does `string.Format`-style interpolation, then `AddLast`, under lock. If the engine generates a high-volume log burst (e.g. shader compilation errors), this serializes through the lock. Acceptable for normal operation; flagged for awareness.
-
-- **[3/10]** `scripts/DebugLog.cs:172-193` — `_LogError` builds two interpolated strings (`$"{file}:{line} {function}"` and `$"{rationale} ({code})"`) per engine error. Allocation per error. Not patched — error logging is intentional and low-frequency.
+- **[3/10]** Two autoloads (`DebugLog`, `GameSession`). Both are looked up only once in `_Ready` (`GameScreen.cs:47`), so there is no per-frame `/root/...` resolution churn. No issue.
+- **[2/10]** `DebugLog.CapturingLogger._LogMessage` allocates strings via `string.TrimEnd()` and the bracketed prefix in `Append`. Triggered on every `GD.Print` (including the DEBUG-only ones). Acceptable for a debug subsystem.
+- **[1/10]** Signal `DebugLog.GameplayActiveChanged` is correctly subscribed and unsubscribed in `GameScreen._Ready` / `_ExitTree`. No leak.
 
 ### Scenes & Resources
-- **[N/A]** `scenes/game.tscn` (90 lines) — small, no `local_to_scene=true` materials, no deep node chains, no over-amount particles. Clean.
+- `scenes/game.tscn` — clean. No `shadow_enabled=true`, no `local_to_scene=true` materials, no `GPUParticles*`. WorldEnvironment uses a flat clear-color background with cheap ambient. Tree depth is shallow.
+- `HexBoard` tiles share `SharedTileMesh` and `SharedTileShape`. Per-checker `StandardMaterial3D` (only 3 of them) shared across all tiles. Highlight uses one shared `StandardMaterial3D`. Good resource hygiene.
+- Token subclasses share their `Mesh` and `StandardMaterial3D` via `private static readonly` fields. Good.
 
 ### Shaders
-- **[N/A]** Project ships no `.gdshader` files. Nothing to audit.
+- No custom `.gdshader` files in the project. Tokens and tiles use `StandardMaterial3D` only. Nothing to audit.
 
 ### Project Settings
-- **[4/10]** `project.godot` — `renderer/rendering_method="gl_compatibility"` is set for both desktop and mobile, which is the right choice for low-end mobile reach but limits features (no shadows from spot/point lights, no SSR, no SSIL). Intentional, do not change without consent.
-
-- **[3/10]** `project.godot` — `textures/vram_compression/import_etc2_astc=true` is set. Good for mobile; pairs with the Android export preset.
-
-- **[5/10]** `project.godot` — missing explicit `rendering/anti_aliasing/quality/msaa_3d` setting. Default is `Disabled`, which is correct for low-end mobile. Confirm on target device that no MSAA is desired.
+- `renderer/rendering_method=gl_compatibility` (mobile-appropriate).
+- `textures/vram_compression/import_etc2_astc=true` (correct for modern Android).
+- No `physics_ticks_per_second` override — see Physics section above.
+- No `rendering/anti_aliasing/quality/msaa_*` overrides — defaults to off, which is the right choice for `gl_compatibility` on mobile.
+- `window/stretch/mode="canvas_items"` with landscape — appropriate.
 
 ### Mobile-Specific
-- **[6/10]** `export_presets.cfg` — `gradle_build/compress_native_libraries=false`. Set to `true` for smaller APK and faster initial install, at the cost of slightly slower startup (libraries decompressed on launch). For a small game like Hex, `true` is usually the better trade-off. Not patched (user preference).
-
-- **[4/10]** `export_presets.cfg` — `architectures/armeabi-v7a=false`, only `arm64-v8a=true`. Correct for modern devices; excludes pre-2017 hardware. Already mobile-optimal.
-
-- **[4/10]** *Hypothesis:* draw call count for 61 tiles + 1 token + UI is well under the <100 mobile target. Static budget looks safe.
-
-- **[3/10]** *Hypothesis:* `Area3D` input picking on all 61 tiles every frame the viewport is processing input. Currently gated by `Viewport.PhysicsObjectPicking` toggled when modals open/close (`GameScreen.SetGameplayActive`) — good. Confirm that physics-object picking is the actual cost driver before changing.
+- Android export targets only `arm64-v8a` — single architecture keeps APK small.
+- `gradle_build/compress_native_libraries=false` — fine for size/startup tradeoff.
+- `screen/immersive_mode=true` — good for full-screen game.
+- Single `DirectionalLight3D` with no shadow — mobile-friendly.
+- Draw call count is approximately: 61 tile meshes + 1 token mesh + UI canvas = well under the <100 mobile guideline. (Note: each tile is its own `Area3D + MeshInstance3D`; Godot may not batch these. Could be flagged if a future profile shows draw-call pressure, but conservative analysis can't confirm.)
 
 ## What this audit did NOT cover
 
-- No profiling — every "hot path" is inferred from syntax, not measured. The game has no per-frame `_Process` or `_PhysicsProcess` overrides at all, so most static-analysis "hot path" categories simply do not apply here.
-- No runtime measurement — patch not verified to improve perf.
-- No editor-driven scene playback or draw-call inspection.
-- No GPU profiling — shader compilation, texture upload, and fillrate not assessed.
-- No on-device thermal/battery measurement.
-- No analysis of `addons/`, `android/build/`, `build/`, `.godot/`, `obj/`, `bin/` (excluded by audit methodology).
-- No tween/animation profiling — `CreateTween` is used for token movement and gear flash, both short-lived and infrequent.
+- **No profiling.** Every "hot path" is inferred from syntax. The engine may behave very differently from what static analysis predicts.
+- **No runtime measurement.** No FPS, frame-time, draw-call, or memory data was captured.
+- **No editor-driven scene playback.** Did not run the project to count actual draw calls, observe `Area3D` picking cost, or inspect VRAM.
+- **No GPU/shader inspection.** No custom shaders exist, but `StandardMaterial3D` compile/parse cost on first frame was not measured.
+- **No mobile thermals / battery measurement.** Cannot confirm whether `gl_compatibility` + 60 Hz physics is a problem on low-end Android.
 
 ## Recommended next step
 
-Profile a real session on the target mobile device: open the Godot remote profiler, watch CPU frame time during board build, token swap, and tile selection, and measure GPU frame time during steady-state idle. If frame time is acceptable, no further audit work is warranted. If a hot spot appears, re-run this audit with the profile as input. Independently of profiling, consider:
+Profile the game on the worst-case target device (lowest-end target Android phone) with the Godot Monitor + frame-time graph visible, recording a 30-second session of token-picking + tile-tapping. Specifically watch:
 
-1. Setting `physics/common/physics_ticks_per_second` to 30 Hz (turn-based game, no physics simulation).
-2. Setting `gradle_build/compress_native_libraries=true` in `export_presets.cfg` for smaller APK.
-3. Confirming `Viewport.PhysicsObjectPicking` gating actually correlates with idle CPU savings on device.
+1. **Process / Physics Process time** — to confirm there really is no per-frame CPU work (the static analysis predicts ~zero).
+2. **Draw calls** — to confirm the 61 individual tile `MeshInstance3D`s aren't a draw-call issue. If they are, the fix is to switch to a `MultiMeshInstance3D` for tiles.
+3. **`Area3D` picking cost** under continuous touch input.
+4. **Physics tick CPU** — if it's a meaningful slice, lower `physics_ticks_per_second` to 30.
+
+Re-run this audit with the profile as input; that's when concrete prioritization becomes possible.
