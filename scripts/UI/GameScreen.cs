@@ -36,6 +36,9 @@ public partial class GameScreen : Node3D
     private Label _description;
     private Button _selectedButton;
     private GameSession _session;
+    private Label _hudLabel;
+    private int _remaining;
+    private ulong _flashUntilMs;
 
     public override void _Ready()
     {
@@ -66,12 +69,68 @@ public partial class GameScreen : Node3D
             list.AddChild(button);
         }
 
+        BuildHud();
+        _board.EnemiesChanged += OnEnemiesChanged;
+        _board.BoardSolved += OnBoardSolved;
+
         GD.Print($"[GameScreen] _Ready done, camera={GetViewport().GetCamera3D()?.Name}, viewport={GetViewport().GetVisibleRect().Size}");
+    }
+
+    private void BuildHud()
+    {
+        var uiRoot = GetNode<Control>("UI/Root");
+        _hudLabel = new Label
+        {
+            Text = "",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        _hudLabel.SetAnchorsPreset(Control.LayoutPreset.TopWide);
+        _hudLabel.OffsetTop = 24;
+        _hudLabel.OffsetBottom = 88;
+        _hudLabel.AddThemeFontSizeOverride("font_size", 36);
+        _hudLabel.AddThemeColorOverride("font_color", new Color(1f, 0.95f, 0.8f));
+        _hudLabel.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.85f));
+        _hudLabel.AddThemeConstantOverride("shadow_outline_size", 6);
+        uiRoot.AddChild(_hudLabel);
+    }
+
+    private void OnEnemiesChanged(int remaining)
+    {
+        _remaining = remaining;
+        if (Time.GetTicksMsec() < _flashUntilMs) return;
+        _hudLabel.Text = remaining > 0 ? $"Enemies left: {remaining}" : "Cleared!";
+    }
+
+    private void OnBoardSolved()
+    {
+        _hudLabel.Text = "Cleared!";
+        _flashUntilMs = Time.GetTicksMsec() + 900;
+
+        _hudLabel.PivotOffset = _hudLabel.Size / 2f;
+        var pop = CreateTween();
+        pop.TweenProperty(_hudLabel, "scale", new Vector2(1.35f, 1.35f), 0.14f)
+            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+        pop.TweenProperty(_hudLabel, "scale", Vector2.One, 0.22f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+
+        var timer = GetTree().CreateTimer(0.9);
+        timer.Timeout += () =>
+        {
+            if (!IsInstanceValid(_hudLabel)) return;
+            _flashUntilMs = 0;
+            _hudLabel.Text = _remaining > 0 ? $"Enemies left: {_remaining}" : "Cleared!";
+        };
     }
 
     public override void _ExitTree()
     {
         DebugLog.GameplayActiveChanged -= SetGameplayActive;
+        if (_board != null)
+        {
+            _board.EnemiesChanged -= OnEnemiesChanged;
+            _board.BoardSolved -= OnBoardSolved;
+        }
     }
 
     public void SetGameplayActive(bool active)
