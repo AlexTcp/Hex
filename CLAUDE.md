@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Hex** is a minimalist Godot 4.6 (mono, .NET 8) hex-grid movement puzzle. The player picks one of 18 token types (Walker, Runner, Jumper, Knight, Spiral, Mirror, Ringwalk, Charger, Diamond, Orbit, Edge, Anchor, Echo, Pivot, Skipper, Drifter, Shrine, Stepper) and taps tiles to move it across a 61-tile board (radius 4). Each token type encodes a different movement rule — that rule *is* the puzzle.
+**Hex** is a minimalist Godot 4.6 (mono, .NET 8) hex-grid movement puzzle. The player picks one of 14 token types (Walker, Charger, Stepper, Skipper, Runner, Hopper, Jumper, Halo, Diamond, Glider, Knight, Camel, Spiral, Drifter) and taps tiles to move it across a 61-tile board (radius 4). Each token type encodes a different movement rule — that rule *is* the puzzle. All current rules generate destinations relative to the token's position (`from + offset`); the previous origin-anchored set (Mirror, Ringwalk, Orbit, Edge, Anchor, Echo, Pivot, Shrine) has been removed.
 
 The codebase is small (11 C# files) and heavily optimized for low-spec mobile: GL Compatibility renderer, zero-alloc movement generation, shared GPU resources, signal-based input gating. Most recent commits are perf audit follow-ups — preserve the zero-alloc invariants when touching gameplay code.
 
@@ -24,7 +24,7 @@ The codebase is small (11 C# files) and heavily optimized for low-spec mobile: G
 
 ### Core Game Loop
 
-1. **Init**: `HexBoard._Ready` enumerates `HexCoord.Within(radius=4)` to build 61 tiles. Each tile is an `Area3D` + `MeshInstance3D` sharing one static `CylinderMesh` + `CylinderShape3D`. `GameScreen._Ready` builds the 18-button picker from `TokenCatalog.All`; pre-selects Walker (index 0).
+1. **Init**: `HexBoard._Ready` enumerates `HexCoord.Within(radius=4)` to build 61 tiles. Each tile is an `Area3D` + `MeshInstance3D` sharing one static `CylinderMesh` + `CylinderShape3D`. `GameScreen._Ready` builds the 14-button picker from `TokenCatalog.All`; pre-selects Walker (index 0).
 2. **First tap** on the current token's tile → `BeginSelect()` calls `Token.LegalMoves(from, radius, _movesBuffer)`, swaps the `MaterialOverride` of each legal-move tile to the shared gold emissive material.
 3. **Second tap** on a highlighted tile → `MoveTokenTo(coord)` tweens the token (0.18s Sine-out) to the new world position, then `EndSelect()` restores base materials.
 4. **Picker** → `OnPickToken(idx)` updates `GameSession.SelectedTokenIndex`, calls `HexBoard.SetToken(idx)` (frees the old token, instantiates the new via `TokenCatalog.All[idx].Factory()`).
@@ -38,10 +38,10 @@ The codebase is small (11 C# files) and heavily optimized for low-spec mobile: G
 ### Token System
 
 - `scripts/Tokens/Token.cs` — abstract partial `Node3D` base. Required overrides per subclass: `Id`, `LegalMoves(from, radius, output)`, `GetSharedMesh()`, `GetSharedMaterial()`.
-- `scripts/Tokens/Tokens.cs` — 18 sealed partial subclasses. Each defines:
+- `scripts/Tokens/Tokens.cs` — 14 sealed partial subclasses. Each defines:
   - A movement rule that fills the caller's `List<HexCoord>` buffer (no per-call allocation).
   - `static readonly` `SharedMesh` and `SharedMaterial` — every instance of a given token type renders with the same GPU resources.
-- `scripts/Tokens/TokenCatalog.cs` — static `TokenInfo[]` of 18 entries (`Name`, `Description`, `Func<Token> Factory`). The picker UI iterates this without instantiating.
+- `scripts/Tokens/TokenCatalog.cs` — static `TokenInfo[]` of 14 entries (`Name`, `Description`, `Func<Token> Factory`). The picker UI iterates this without instantiating.
 - `Token.Filter(moves, from, boardRadius)` — in-place two-pointer compaction that strips the origin tile and out-of-bounds entries. Use it in every subclass's `LegalMoves` before returning.
 
 ### Board (`scripts/Board/HexBoard.cs`)
@@ -54,7 +54,7 @@ The codebase is small (11 C# files) and heavily optimized for low-spec mobile: G
 
 ### UI (`scripts/UI/GameScreen.cs`)
 
-- Root `Node3D` for the game scene. `_Ready` builds a vertical `VBoxContainer` of 18 toggle buttons from `TokenCatalog`. Subscribes to `DebugLog.GameplayActiveChanged` and toggles `Viewport.PhysicsObjectPicking` so modal overlays don't pass taps through to the board.
+- Root `Node3D` for the game scene. `_Ready` builds a vertical `VBoxContainer` of 14 toggle buttons from `TokenCatalog`. Subscribes to `DebugLog.GameplayActiveChanged` and toggles `Viewport.PhysicsObjectPicking` so modal overlays don't pass taps through to the board.
 - All UI is procedural — there's no `.tscn` for the picker.
 
 ### Debug Overlay
@@ -74,7 +74,7 @@ These are the patterns the recent perf audit established. Don't regress them:
 
 ## Existing Documentation
 
-- `overview.html` — comprehensive HTML reference with file map, 18-token table, hex math notes. Open in a browser; treat as the human-facing readme.
+- `overview.html` — comprehensive HTML reference with file map, token table, hex math notes. Open in a browser; treat as the human-facing readme. (May still reference the removed origin-anchored tokens until refreshed.)
 - `PERFORMANCE_AUDIT.md` — most recent audit; identifies remaining minor opportunities. Scope covers C# gameplay and the GDScript test scaffolding under `android/build/`.
 
 ## Scene & Project Layout

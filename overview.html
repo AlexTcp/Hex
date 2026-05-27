@@ -67,7 +67,7 @@
 
 <header class="top">
   <h1>HEX</h1>
-  <div class="tagline">Hex-grid movement puzzle with 18 piece types · Godot 4.6 + C# · GL Compatibility · 1280×720 landscape</div>
+  <div class="tagline">Hex-grid movement puzzle with 14 piece types · Godot 4.6 + C# · GL Compatibility · 1280×720 landscape</div>
 </header>
 
 <div class="layout">
@@ -79,7 +79,7 @@
       <li><a href="#scene-flow">Scene Flow</a></li>
       <li><a href="#autoloads">Autoloads</a></li>
       <li><a href="#loop">Gameplay Loop</a></li>
-      <li><a href="#tokens">18 Tokens</a></li>
+      <li><a href="#tokens">14 Tokens</a></li>
       <li><a href="#hexmath">Hex Math</a></li>
       <li><a href="#board">Board</a></li>
       <li><a href="#ui">UI &amp; Debug</a></li>
@@ -96,17 +96,17 @@
       <h2>Overview</h2>
       <p>
         Hex is a minimalist Godot 4.6 + C# turn-based piece-movement puzzle. A hexagonal grid (radius 4, 61 tiles) hosts
-        a single token; the player selects one of <strong>18 distinct piece types</strong> (Walker, Runner, Jumper,
+        a single token; the player selects one of <strong>14 distinct piece types</strong> (Walker, Runner, Jumper,
         Knight, Stepper, …) and taps a tile to move there. Each piece encodes its own movement rule — single-step,
-        sliding-ray, teleport, ring-locked, mirror, etc. There is no CLAUDE.md; the project is fully self-documenting via
-        code.
+        sliding-ray, teleport, or short-radius circle — and all rules compute destinations relative to the token's
+        position.
       </p>
       <div class="cards">
         <div class="card"><div class="sub">Engine</div><h4>Godot 4.6.2 Mono</h4>.NET 8, Godot.NET.Sdk 4.6.2, <code>EnableDynamicLoading</code></div>
         <div class="card"><div class="sub">Renderer</div><h4>GL Compatibility</h4>etc2_astc texture compression on</div>
         <div class="card"><div class="sub">Entry scene</div><h4>scenes/game.tscn</h4>GameScreen Node3D, HexBoard, UI CanvasLayer</div>
         <div class="card"><div class="sub">Grid</div><h4>Radius 4 · 61 tiles</h4>configurable export param on HexBoard</div>
-        <div class="card"><div class="sub">Token count</div><h4>18 sealed subclasses</h4>each defines unique LegalMoves + mesh</div>
+        <div class="card"><div class="sub">Token count</div><h4>14 sealed subclasses</h4>each defines unique LegalMoves + mesh</div>
         <div class="card"><div class="sub">Health</div><h4>8.5 / 10</h4>per <code>PERFORMANCE_AUDIT.md</code></div>
       </div>
     </section>
@@ -155,7 +155,7 @@ BUILD_MODE=release LOGCAT=1 VERBOSE=1 ./run_android.sh
     <section id="loop">
       <h2>Gameplay Loop</h2>
       <ol>
-        <li><strong>Init</strong>: <code>HexBoard._Ready</code> builds tiles from <code>HexCoord.Within(4)</code>, creates one Area3D + Mesh per tile, connects <code>Area3D.InputEvent</code> to a per-tile <code>Callable</code>. <code>GameScreen._Ready</code> iterates <code>TokenCatalog.All</code> to build 18 toggle buttons; pre-selects Walker (index 0).</li>
+        <li><strong>Init</strong>: <code>HexBoard._Ready</code> builds tiles from <code>HexCoord.Within(4)</code>, creates one Area3D + Mesh per tile, connects <code>Area3D.InputEvent</code> to a per-tile <code>Callable</code>. <code>GameScreen._Ready</code> iterates <code>TokenCatalog.All</code> to build 14 toggle buttons; pre-selects Walker (index 0).</li>
         <li><strong>Selection</strong>: tap a tile → <code>Area3D.InputEvent</code> → <code>OnTileInput(coord, event)</code>. If <code>!_selected</code> and <code>coord == tokenPos</code>, call <code>BeginSelect()</code> (memoised on <code>(_lastSelectedToken, _lastSelectedPos)</code> — returns early if same token/pos).</li>
         <li><strong>Move generation</strong>: <code>Token.LegalMoves(tokenPos, Radius, _movesBuffer)</code> fills the buffer with destination <code>HexCoord</code>s. <code>Token.Filter</code> strips origin tile + out-of-bounds in place.</li>
         <li><strong>Highlight</strong>: for each move, find the tile in <code>_tiles</code> dict, swap <code>Mesh.MaterialOverride</code> to <code>HighlightMaterial</code> (emissive gold). Store highlighted coords in <code>_highlighted</code> HashSet.</li>
@@ -164,7 +164,7 @@ BUILD_MODE=release LOGCAT=1 VERBOSE=1 ./run_android.sh
     </section>
 
     <section id="tokens">
-      <h2>18 Tokens</h2>
+      <h2>14 Tokens</h2>
       <p>
         Each is a sealed partial subclass in <code>scripts/Tokens/Tokens.cs</code> with a distinct mesh, colour, and
         <code>LegalMoves</code> rule. Listed in picker UI order:
@@ -173,23 +173,19 @@ BUILD_MODE=release LOGCAT=1 VERBOSE=1 ./run_android.sh
         <thead><tr><th>Token</th><th>Movement rule</th></tr></thead>
         <tbody>
           <tr><td>Walker</td><td>6 adjacent (distance 1)</td></tr>
-          <tr><td>Runner</td><td>6 rays, any distance</td></tr>
-          <tr><td>Jumper</td><td>Ring distance 2</td></tr>
-          <tr><td>Knight</td><td>2 in one direction + 1 perpendicular (L-shape, 12 total)</td></tr>
-          <tr><td>Stepper</td><td>6 steps distance 3</td></tr>
-          <tr><td>Spiral</td><td><code>Within(2)</code> circle</td></tr>
-          <tr><td>Mirror</td><td>Reflect through origin</td></tr>
-          <tr><td>Ringwalk</td><td>Stay on the same concentric ring</td></tr>
           <tr><td>Charger</td><td>Distance 2 straight</td></tr>
-          <tr><td>Diamond</td><td>6 diagonal (between cardinal directions)</td></tr>
-          <tr><td>Orbit</td><td>Rings ±1 from current radius</td></tr>
-          <tr><td>Edge</td><td>Outer ring only</td></tr>
-          <tr><td>Anchor</td><td>Ring 1 only</td></tr>
-          <tr><td>Echo</td><td>3 axial reflections</td></tr>
-          <tr><td>Pivot</td><td>5 rotations around origin</td></tr>
+          <tr><td>Stepper</td><td>6 steps distance 3</td></tr>
           <tr><td>Skipper</td><td>Distance 4 straight</td></tr>
+          <tr><td>Runner</td><td>6 rays, any distance</td></tr>
+          <tr><td>Hopper</td><td>Distance 1 or 3 straight (skips 2)</td></tr>
+          <tr><td>Jumper</td><td>Ring distance 2</td></tr>
+          <tr><td>Halo</td><td>Ring distance 3</td></tr>
+          <tr><td>Diamond</td><td>6 diagonal (between cardinal directions)</td></tr>
+          <tr><td>Glider</td><td>6 diagonal rays, any distance</td></tr>
+          <tr><td>Knight</td><td>2 in one direction + 1 perpendicular (L-shape, 12 total)</td></tr>
+          <tr><td>Camel</td><td>3 in one direction + 1 perpendicular (longer L, 12 total)</td></tr>
+          <tr><td>Spiral</td><td><code>Within(2)</code> circle</td></tr>
           <tr><td>Drifter</td><td><code>Within(3)</code> circle</td></tr>
-          <tr><td>Shrine</td><td>Teleport to origin only</td></tr>
         </tbody>
       </table>
       <p>
@@ -248,7 +244,7 @@ BUILD_MODE=release LOGCAT=1 VERBOSE=1 ./run_android.sh
       <ul>
         <li><code>HexCoord</code> readonly struct with proper hashing — O(1) dict lookup.</li>
         <li><code>Within</code> / <code>Ring</code> have buffer-filling overloads; code uses them everywhere.</li>
-        <li>All 18 Token subclasses expose <em>static readonly</em> shared Mesh + Material — GPU batching by piece type.</li>
+        <li>All 14 Token subclasses expose <em>static readonly</em> shared Mesh + Material — GPU batching by piece type.</li>
         <li><code>HexBoard</code> uses shared static <code>CylinderMesh</code> + <code>CylinderShape3D</code> for all tiles.</li>
         <li><code>_movesBuffer</code> pre-allocated capacity 64, reused.</li>
         <li><code>BeginSelect</code> memoises (token, pos) and skips <code>LegalMoves</code> if unchanged.</li>
@@ -305,21 +301,21 @@ BUILD_MODE=release LOGCAT=1 VERBOSE=1 ./run_android.sh
           <tr><td><code>scripts/Hex/HexLayout.cs</code></td><td>ToWorld, TileSize 0.55 f</td></tr>
           <tr><td><code>scripts/Board/HexBoard.cs</code></td><td>Board build, tile pick, highlight, token tween</td></tr>
           <tr><td><code>scripts/Tokens/Token.cs</code></td><td>Abstract base, LegalMoves contract, Filter helper</td></tr>
-          <tr><td><code>scripts/Tokens/Tokens.cs</code></td><td>18 sealed subclasses</td></tr>
-          <tr><td><code>scripts/Tokens/TokenCatalog.cs</code></td><td>Static TokenInfo[] All (18 entries, factories)</td></tr>
+          <tr><td><code>scripts/Tokens/Tokens.cs</code></td><td>14 sealed subclasses</td></tr>
+          <tr><td><code>scripts/Tokens/TokenCatalog.cs</code></td><td>Static TokenInfo[] All (14 entries, factories)</td></tr>
           <tr><td><code>textures/ui/gear.png</code></td><td>Settings button icon</td></tr>
           <tr><td><code>PERFORMANCE_AUDIT.md</code></td><td>Health 8.5/10, optimisation analysis</td></tr>
           <tr><td><code>run_android.sh</code></td><td>Export + install + launch + device check</td></tr>
         </tbody>
       </table>
-      <p><strong>Total scripts:</strong> 11 .cs files. <strong>Total classes:</strong> ~26 (18 token subclasses + 1 catalog + 1 abstract base + helpers + UI).</p>
+      <p><strong>Total scripts:</strong> 11 .cs files. <strong>Total classes:</strong> ~22 (14 token subclasses + 1 catalog + 1 abstract base + helpers + UI).</p>
     </section>
 
   </main>
 </div>
 
 <footer>
-  <span class="build">Hex</span> · Godot 4.6 Mono · GL Compatibility · 18 tokens × 61 tiles · zero-alloc movement
+  <span class="build">Hex</span> · Godot 4.6 Mono · GL Compatibility · 14 tokens × 61 tiles · zero-alloc movement
 </footer>
 
 </body>
