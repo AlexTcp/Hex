@@ -15,7 +15,7 @@ Hex is a small turn-based hex puzzle game with a tight, well-factored codebase. 
 
 _No automatic patches were applied._
 
-The conservative-fix criteria (per skill) did not match any site in this codebase: no `GetNode`/`Load`/LINQ/string-build in confirmed hot paths, no print calls in non-`#if DEBUG` per-frame methods, no obvious shadow/MSAA misconfiguration. Pre-existing `.bak` files (e.g. `scripts/UI/GameScreen.cs.bak`) were left untouched.
+The conservative-fix criteria (per skill) did not match any site in this codebase: no `GetNode`/`Load`/LINQ/string-build in confirmed hot paths, no print calls in non-`#if DEBUG` per-frame methods, no obvious shadow/MSAA misconfiguration. Pre-existing `.bak` files (e.g. `scripts/UI/GameScreen.cs.bak`) were left untouched. Re-audit (2026-05-30): 5 changed files (`HexBoard.cs`, `GameScreen.cs`, `TokenCatalog.cs`, `Tokens.cs`, `Haptics.cs`) scanned — no new performance issues found.
 
 ## Identified Issues (hypotheses; verify with profiler before further work)
 
@@ -79,3 +79,14 @@ Profile the game on the worst-case target device (lowest-end target Android phon
 4. **Physics tick CPU** — if it's a meaningful slice, lower `physics_ticks_per_second` to 30.
 
 Re-run this audit with the profile as input; that's when concrete prioritization becomes possible.
+
+---
+
+## Re-audit (2026-05-31, static analysis, no profiler)
+
+Re-pass, **no new patches**. Battery clean (`Enum.GetValues`=0, `.Call(`=0, no hot-path
+`_Process`/`_Draw`/`_PhysicsProcess`, no uncached `=> GetNodeOrNull` accessors). `gl_compatibility`
+explicit for both desktop and mobile; 3D Area3D-picker board with **no shadow-enabled lights**. The
+only open item — `physics_ticks_per_second` default 60 — stays a hypothesis (lowering it risks
+`Area3D` input-picking responsiveness; behavior preservation not certain). Health **8.5/10**.
+Next step: if mobile CPU is tight, A/B test 30 Hz physics on device and watch tap latency.
