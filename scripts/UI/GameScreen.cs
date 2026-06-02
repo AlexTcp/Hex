@@ -38,6 +38,7 @@ public partial class GameScreen : Node3D
     private GameSession _session;
     private Label _hudLabel;
     private int _remaining;
+    private int _wave = 1;
     private ulong _flashUntilMs;
 
     public override void _Ready()
@@ -70,8 +71,11 @@ public partial class GameScreen : Node3D
         }
 
         BuildHud();
+        BuildReachToggle();
         _board.EnemiesChanged += OnEnemiesChanged;
         _board.BoardSolved += OnBoardSolved;
+        _board.WaveChanged += OnWaveChanged;
+        _board.ComboChanged += OnComboChanged;
 
         GD.Print($"[GameScreen] _Ready done, camera={GetViewport().GetCamera3D()?.Name}, viewport={GetViewport().GetVisibleRect().Size}");
     }
@@ -95,32 +99,74 @@ public partial class GameScreen : Node3D
         uiRoot.AddChild(_hudLabel);
     }
 
+    private string HudText() => _remaining > 0 ? $"Wave {_wave}   Enemies: {_remaining}" : "Cleared!";
+
     private void OnEnemiesChanged(int remaining)
     {
         _remaining = remaining;
         if (Time.GetTicksMsec() < _flashUntilMs) return;
-        _hudLabel.Text = remaining > 0 ? $"Enemies left: {remaining}" : "Cleared!";
+        _hudLabel.Text = HudText();
+    }
+
+    private void OnWaveChanged(int wave)
+    {
+        _wave = wave;
+        if (Time.GetTicksMsec() < _flashUntilMs) return;
+        _hudLabel.Text = HudText();
+    }
+
+    private void OnComboChanged(int combo)
+    {
+        _hudLabel.Text = $"Combo x{combo}!";
+        _flashUntilMs = Time.GetTicksMsec() + 700;
+        FlashPop(1.3f, 0.12f);
+
+        var timer = GetTree().CreateTimer(0.7);
+        timer.Timeout += () =>
+        {
+            if (!IsInstanceValid(_hudLabel)) return;
+            if (Time.GetTicksMsec() < _flashUntilMs) return;   // a newer flash superseded this one
+            _flashUntilMs = 0;
+            _hudLabel.Text = HudText();
+        };
     }
 
     private void OnBoardSolved()
     {
         _hudLabel.Text = "Cleared!";
         _flashUntilMs = Time.GetTicksMsec() + 900;
-
-        _hudLabel.PivotOffset = _hudLabel.Size / 2f;
-        var pop = CreateTween();
-        pop.TweenProperty(_hudLabel, "scale", new Vector2(1.35f, 1.35f), 0.14f)
-            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
-        pop.TweenProperty(_hudLabel, "scale", Vector2.One, 0.22f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        FlashPop(1.35f, 0.14f);
 
         var timer = GetTree().CreateTimer(0.9);
         timer.Timeout += () =>
         {
             if (!IsInstanceValid(_hudLabel)) return;
+            if (Time.GetTicksMsec() < _flashUntilMs) return;   // a newer flash superseded this one
             _flashUntilMs = 0;
-            _hudLabel.Text = _remaining > 0 ? $"Enemies left: {_remaining}" : "Cleared!";
+            _hudLabel.Text = HudText();
         };
+    }
+
+    private void FlashPop(float scale, float upDuration)
+    {
+        _hudLabel.PivotOffset = _hudLabel.Size / 2f;
+        var pop = CreateTween();
+        pop.TweenProperty(_hudLabel, "scale", new Vector2(scale, scale), upDuration)
+            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+        pop.TweenProperty(_hudLabel, "scale", Vector2.One, 0.22f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+    }
+
+    private void BuildReachToggle()
+    {
+        var uiRoot = GetNode<Control>("UI/Root");
+        var btn = new CheckButton { Text = "Reach" };
+        btn.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
+        btn.GrowHorizontal = Control.GrowDirection.Begin;
+        btn.OffsetRight = -24;
+        btn.AddThemeFontSizeOverride("font_size", 26);
+        btn.Toggled += on => _board.SetShowReach(on);
+        uiRoot.AddChild(btn);
     }
 
     public override void _ExitTree()
@@ -130,6 +176,8 @@ public partial class GameScreen : Node3D
         {
             _board.EnemiesChanged -= OnEnemiesChanged;
             _board.BoardSolved -= OnBoardSolved;
+            _board.WaveChanged -= OnWaveChanged;
+            _board.ComboChanged -= OnComboChanged;
         }
     }
 

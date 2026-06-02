@@ -34,6 +34,8 @@ public partial class HexBoard : Node3D
 
     [Signal] public delegate void EnemiesChangedEventHandler(int remaining);
     [Signal] public delegate void BoardSolvedEventHandler();
+    [Signal] public delegate void WaveChangedEventHandler(int wave);
+    [Signal] public delegate void ComboChangedEventHandler(int combo);
 
     private readonly Dictionary<HexCoord, Tile> _tiles = new();
     private Token _token;
@@ -44,6 +46,27 @@ public partial class HexBoard : Node3D
     private Token _lastSelectedToken;
     private HexCoord _lastSelectedPos;
     private bool _selectionValid = false;
+
+    // Difficulty ramp: each board clear bumps the wave and spawns one more enemy.
+    private int _wave = 1;
+    // Capture streak: incremented per capturing move, reset on a non-capturing move.
+    private int _comboCount = 0;
+
+    // Selection juice: a single looped tween pulses the shared highlight materials'
+    // emission — one driver animates every highlighted tile at once (zero per-tile cost).
+    private Tween _pulseTween;
+
+    // Telegraph: pooled ghost markers showing where deterministic (Chase/Flee) enemies
+    // will step. Reused across selections; hidden rather than freed.
+    private readonly List<MeshInstance3D> _telegraphNodes = new();
+
+    // Landing shockwave ring: one pooled node, re-triggered on every committed move.
+    private MeshInstance3D _ringNode;
+    private Tween _ringTween;
+
+    // Reachable-reach overlay: optional faint marking of every BFS-reachable tile.
+    private bool _showReach = false;
+    private readonly HashSet<HexCoord> _reachMarked = new();
 
     // Enemy state. Enemies are separate mesh nodes (not tile material swaps) so
     // they can coexist with highlight materials and be tweened/popped freely.
@@ -81,6 +104,55 @@ public partial class HexBoard : Node3D
         Emission = HighlightColor * 0.6f,
         EmissionEnabled = true,
         Roughness = 0.5f,
+    };
+
+    // Distinct red-gold for legal-move tiles that already hold an enemy: tapping one
+    // is an immediate capture, so it should read differently from a plain move.
+    private static readonly Color CaptureHighlightColor = new(1f, 0.55f, 0.2f);
+    private static readonly StandardMaterial3D CaptureHighlightMaterialShared = new()
+    {
+        AlbedoColor = CaptureHighlightColor,
+        Emission = CaptureHighlightColor * 0.8f,
+        EmissionEnabled = true,
+        Roughness = 0.5f,
+    };
+
+    // Faint tint marking BFS-reachable tiles when the reach overlay is enabled.
+    private static readonly Color ReachColor = new(0.45f, 0.62f, 0.55f);
+    private static readonly StandardMaterial3D ReachMaterialShared = new()
+    {
+        AlbedoColor = ReachColor,
+        Emission = ReachColor * 0.25f,
+        EmissionEnabled = true,
+        Roughness = 0.7f,
+    };
+
+    // Telegraph marker: small unshaded translucent disc shared by every ghost node.
+    private static readonly Mesh SharedTelegraphMesh = new CylinderMesh
+    {
+        TopRadius = HexLayout.TileSize * 0.4f,
+        BottomRadius = HexLayout.TileSize * 0.4f,
+        Height = 0.04f,
+        RadialSegments = 6,
+    };
+    private static readonly StandardMaterial3D TelegraphMaterialShared = new()
+    {
+        AlbedoColor = new Color(1f, 0.3f, 0.3f, 0.35f),
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+    };
+
+    // Landing shockwave ring: one flat torus, scaled up + faded on each move.
+    private static readonly Mesh SharedRingMesh = new TorusMesh
+    {
+        InnerRadius = HexLayout.TileSize * 0.55f,
+        OuterRadius = HexLayout.TileSize * 0.7f,
+    };
+    private static readonly StandardMaterial3D RingMaterialShared = new()
+    {
+        AlbedoColor = new Color(1f, 0.92f, 0.6f, 0.85f),
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
     };
 
     private static readonly StandardMaterial3D[] TileMaterialsByChecker =
@@ -166,6 +238,9 @@ public partial class HexBoard : Node3D
         _selectionValid = false;
         _lastSelectedToken = null;
         _tokenPos = HexCoord.Zero;
+        _wave = 1;
+        _comboCount = 0;
+        EmitSignal(SignalName.WaveChanged, _wave);
 
         if (_token != null)
         {
@@ -185,7 +260,7 @@ public partial class HexBoard : Node3D
         AddChild(_token);
         _token.Position = HexLayout.ToWorld(_tokenPos, 0.35f);
 
-        SpawnEnemies();
+        SpawnEnemies(EnemyCount);
     }
 
     private void BuildBoard()
@@ -238,6 +313,12 @@ public partial class HexBoard : Node3D
                 tile.Area.Disconnect(Area3D.SignalName.InputEvent, tile.InputHandler);
             }
         }
+
+        // Kill animation tweens and reset the shared materials we mutate — static
+        // resources persist across scene reloads in the same process.
+        _ringTween?.Kill();
+        StopHighlightPulse();
+        RingMaterialShared.AlbedoColor = new Color(1f, 0.92f, 0.6f, 0.85f);
     }
 
     private void OnTileInput(HexCoord coord, InputEvent e)
@@ -271,7 +352,13 @@ public partial class HexBoard : Node3D
             return;
         }
 
-        if (coord == _tokenPos) return;
+        // Re-tapping the token's own tile cancels the selection cleanly.
+        if (coord == _tokenPos)
+        {
+            EndSelect();
+            Haptics.Tap(8);
+            return;
+        }
 
         if (_highlighted.Contains(coord))
         {
@@ -289,6 +376,8 @@ public partial class HexBoard : Node3D
         if (_selectionValid && _lastSelectedToken == _token && _lastSelectedPos == _tokenPos)
         {
             _selected = true;
+            StartHighlightPulse();
+            ShowTelegraph();
             return;
         }
 
@@ -300,11 +389,17 @@ public partial class HexBoard : Node3D
             var dest = _movesBuffer[i];
             if (!_tiles.TryGetValue(dest, out var tile)) continue;
             _highlighted.Add(dest);
-            tile.Mesh.MaterialOverride = tile.HighlightMaterial;
+            // Tiles already holding an enemy are immediate captures — flag them in red-gold.
+            tile.Mesh.MaterialOverride = HasEnemyAt(dest)
+                ? CaptureHighlightMaterialShared
+                : tile.HighlightMaterial;
         }
         _lastSelectedToken = _token;
         _lastSelectedPos = _tokenPos;
         _selectionValid = true;
+
+        StartHighlightPulse();
+        ShowTelegraph();
     }
 
     private void EndSelect()
@@ -315,11 +410,114 @@ public partial class HexBoard : Node3D
 
     private void ClearHighlights()
     {
+        StopHighlightPulse();
+        HideTelegraph();
         foreach (var h in _highlighted)
             if (_tiles.TryGetValue(h, out var t))
                 t.Mesh.MaterialOverride = t.BaseMaterial;
         _highlighted.Clear();
         _selectionValid = false;
+        RefreshReachOverlay();
+    }
+
+    // ----- Selection visuals: pulse + capture detection + telegraph + reach -----
+
+    private bool HasEnemyAt(HexCoord coord)
+    {
+        for (int i = 0; i < _enemies.Count; i++)
+            if (_enemies[i].Coord == coord) return true;
+        return false;
+    }
+
+    // One looped tween drives the emission energy of both shared highlight materials,
+    // so every highlighted tile pulses in sync at zero per-tile cost.
+    private void StartHighlightPulse()
+    {
+        _pulseTween?.Kill();
+        var t = CreateTween().SetLoops();
+        t.TweenProperty(HighlightMaterialShared, "emission_energy_multiplier", 1.5f, 0.55f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        t.Parallel().TweenProperty(CaptureHighlightMaterialShared, "emission_energy_multiplier", 1.5f, 0.55f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        t.TweenProperty(HighlightMaterialShared, "emission_energy_multiplier", 0.7f, 0.55f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        t.Parallel().TweenProperty(CaptureHighlightMaterialShared, "emission_energy_multiplier", 0.7f, 0.55f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        _pulseTween = t;
+    }
+
+    private void StopHighlightPulse()
+    {
+        if (_pulseTween != null) { _pulseTween.Kill(); _pulseTween = null; }
+        HighlightMaterialShared.EmissionEnergyMultiplier = 1f;
+        CaptureHighlightMaterialShared.EmissionEnergyMultiplier = 1f;
+    }
+
+    private MeshInstance3D GetTelegraphNode(int index)
+    {
+        while (index >= _telegraphNodes.Count)
+        {
+            var node = new MeshInstance3D
+            {
+                Mesh = SharedTelegraphMesh,
+                MaterialOverride = TelegraphMaterialShared,
+                Visible = false,
+            };
+            AddChild(node);
+            _telegraphNodes.Add(node);
+        }
+        return _telegraphNodes[index];
+    }
+
+    private void ShowTelegraph()
+    {
+        HideTelegraph();
+        // Only deterministic behaviors can be previewed; RandomWalk is unpredictable.
+        if (Behavior == EnemyBehavior.RandomWalk) return;
+
+        int used = 0;
+        for (int i = 0; i < _enemies.Count; i++)
+        {
+            var step = PredictEnemyStep(i, _tokenPos);
+            if (step == _enemies[i].Coord) continue;   // boxed in: holds, nothing to show
+            var node = GetTelegraphNode(used++);
+            node.Position = HexLayout.ToWorld(step, 0.12f);
+            node.Visible = true;
+        }
+    }
+
+    private void HideTelegraph()
+    {
+        for (int i = 0; i < _telegraphNodes.Count; i++)
+            if (IsInstanceValid(_telegraphNodes[i]))
+                _telegraphNodes[i].Visible = false;
+    }
+
+    public void SetShowReach(bool show)
+    {
+        _showReach = show;
+        RefreshReachOverlay();
+    }
+
+    // Re-marks every BFS-reachable tile with the faint reach material when the overlay
+    // is on; otherwise just clears any prior marks. Highlighted tiles keep precedence.
+    private void RefreshReachOverlay()
+    {
+        foreach (var c in _reachMarked)
+            if (!_highlighted.Contains(c) && _tiles.TryGetValue(c, out var t))
+                t.Mesh.MaterialOverride = t.BaseMaterial;
+        _reachMarked.Clear();
+
+        if (!_showReach || _token == null) return;
+
+        ComputeReachable(_tokenPos);
+        foreach (var c in _reachable)
+        {
+            if (_highlighted.Contains(c)) continue;
+            if (!_tiles.TryGetValue(c, out var t)) continue;
+            t.Mesh.MaterialOverride = ReachMaterialShared;
+            _reachMarked.Add(c);
+        }
     }
 
     private void MoveTokenTo(HexCoord coord)
@@ -327,17 +525,63 @@ public partial class HexBoard : Node3D
         _tokenPos = coord;
         _selectionValid = false;
         TweenTokenTo(coord);
+        PlayLandingRing(coord);
 
         bool captured = TryCapture(coord);
-        Haptics.Tap(captured ? 35 : 15);
+        if (captured)
+        {
+            _comboCount++;
+            if (_comboCount >= 2) EmitSignal(SignalName.ComboChanged, _comboCount);
+        }
+        else
+        {
+            _comboCount = 0;
+        }
+        // Stronger tick the deeper the streak, capped so it never feels harsh.
+        int strength = captured ? Mathf.Min(35 + (_comboCount - 1) * 12, 90) : 15;
+        Haptics.Tap(strength);
 
         if (_enemies.Count == 0)
         {
             EmitSignal(SignalName.BoardSolved);
-            SpawnEnemies();
+            _wave++;
+            EmitSignal(SignalName.WaveChanged, _wave);
+            SpawnEnemies(EnemyCount + (_wave - 1));
             return;
         }
         AdvanceEnemies(coord);
+    }
+
+    // Quick expanding shockwave ring at the landing tile. One pooled node, re-triggered
+    // each move (kills any in-flight tween) to honor the shared-resource convention.
+    private void PlayLandingRing(HexCoord coord)
+    {
+        if (_ringNode == null)
+        {
+            _ringNode = new MeshInstance3D
+            {
+                Mesh = SharedRingMesh,
+                MaterialOverride = RingMaterialShared,
+                Visible = false,
+            };
+            AddChild(_ringNode);
+        }
+
+        _ringTween?.Kill();
+        _ringNode.Position = HexLayout.ToWorld(coord, 0.1f);
+        _ringNode.Scale = new Vector3(0.3f, 1f, 0.3f);
+        _ringNode.Visible = true;
+        RingMaterialShared.AlbedoColor = new Color(1f, 0.92f, 0.6f, 0.85f);
+
+        _ringTween = CreateTween();
+        _ringTween.TweenProperty(_ringNode, "scale", new Vector3(1.7f, 1f, 1.7f), 0.28f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        _ringTween.Parallel().TweenProperty(RingMaterialShared, "albedo_color:a", 0f, 0.28f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        _ringTween.TweenCallback(Callable.From(() =>
+        {
+            if (IsInstanceValid(_ringNode)) _ringNode.Visible = false;
+        }));
     }
 
     private void TweenTokenTo(HexCoord coord)
@@ -367,30 +611,39 @@ public partial class HexBoard : Node3D
     // player. A fully boxed-in enemy holds position.
     private void AdvanceEnemies(HexCoord playerPos)
     {
-        var dirs = HexCoord.Directions;
         for (int i = 0; i < _enemies.Count; i++)
         {
-            var e = _enemies[i];
-            _neighborScratch.Clear();
-            for (int d = 0; d < 6; d++)
-            {
-                var n = e.Coord + dirs[d];
-                if (!_tiles.ContainsKey(n)) continue;   // off-board
-                if (n == playerPos) continue;           // never onto player
-                if (IsEnemyAt(n, i)) continue;          // never onto another enemy
-                _neighborScratch.Add(n);
-            }
-            if (_neighborScratch.Count == 0) continue;
-
-            HexCoord chosen = Behavior switch
-            {
-                EnemyBehavior.Flee => PickByDistance(_neighborScratch, playerPos, maximize: true),
-                EnemyBehavior.Chase => PickByDistance(_neighborScratch, playerPos, maximize: false),
-                _ => _neighborScratch[_rng.Next(_neighborScratch.Count)],
-            };
-            e.Coord = chosen;
-            MoveEnemyVisual(e, chosen);
+            var chosen = PredictEnemyStep(i, playerPos);
+            if (chosen == _enemies[i].Coord) continue;   // boxed in, holds position
+            _enemies[i].Coord = chosen;
+            MoveEnemyVisual(_enemies[i], chosen);
         }
+    }
+
+    // Pure decision: where would enemy `index` step, without mutating any state. Used
+    // both by AdvanceEnemies (to apply the step) and the telegraph (to preview it).
+    // Returns the enemy's current coord when it is boxed in (no legal neighbor).
+    private HexCoord PredictEnemyStep(int index, HexCoord playerPos)
+    {
+        var e = _enemies[index];
+        var dirs = HexCoord.Directions;
+        _neighborScratch.Clear();
+        for (int d = 0; d < 6; d++)
+        {
+            var n = e.Coord + dirs[d];
+            if (!_tiles.ContainsKey(n)) continue;   // off-board
+            if (n == playerPos) continue;           // never onto player
+            if (IsEnemyAt(n, index)) continue;      // never onto another enemy
+            _neighborScratch.Add(n);
+        }
+        if (_neighborScratch.Count == 0) return e.Coord;
+
+        return Behavior switch
+        {
+            EnemyBehavior.Flee => PickByDistance(_neighborScratch, playerPos, maximize: true),
+            EnemyBehavior.Chase => PickByDistance(_neighborScratch, playerPos, maximize: false),
+            _ => _neighborScratch[_rng.Next(_neighborScratch.Count)],
+        };
     }
 
     private bool IsEnemyAt(HexCoord coord, int except)
@@ -425,12 +678,13 @@ public partial class HexBoard : Node3D
             .SetEase(Tween.EaseType.Out);
     }
 
-    private void SpawnEnemies()
+    private void SpawnEnemies(int desired)
     {
         ClearEnemies();
         if (_token == null)
         {
             EmitSignal(SignalName.EnemiesChanged, 0);
+            RefreshReachOverlay();
             return;
         }
 
@@ -438,7 +692,7 @@ public partial class HexBoard : Node3D
         _spawnScratch.Clear();
         foreach (var c in _reachable) _spawnScratch.Add(c);
 
-        int target = Mathf.Min(EnemyCount, _spawnScratch.Count);
+        int target = Mathf.Min(desired, _spawnScratch.Count);
         for (int n = 0; n < target; n++)
         {
             int idx = _rng.Next(_spawnScratch.Count);
@@ -448,6 +702,7 @@ public partial class HexBoard : Node3D
             AddEnemy(coord);
         }
         EmitSignal(SignalName.EnemiesChanged, _enemies.Count);
+        RefreshReachOverlay();
     }
 
     private void AddEnemy(HexCoord coord)
@@ -457,9 +712,15 @@ public partial class HexBoard : Node3D
             Mesh = SharedEnemyMesh,
             MaterialOverride = EnemyMaterial,
             Position = HexLayout.ToWorld(coord, 0.35f),
+            Scale = Vector3.Zero,
         };
         AddChild(mesh);
         _enemies.Add(new Enemy { Coord = coord, Node = mesh });
+
+        // Scale-in so spawns read clearly, mirroring the capture shrink in CaptureVisual.
+        var spawn = CreateTween();
+        spawn.TweenProperty(mesh, "scale", Vector3.One, 0.18f)
+            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
     }
 
     private void ClearEnemies()
