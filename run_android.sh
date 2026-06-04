@@ -178,7 +178,13 @@ echo ">> Installing on device"
 
 if [[ -n "${PACKAGE:-}" ]]; then
     echo ">> Launching $PACKAGE"
-    "$ADB_BIN" "${ADB_ARGS[@]}" shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null
+    # Launch via `am start`, NOT `adb shell monkey`: the monkey tool enables the
+    # device's global Auto-Rotate (settings system accelerometer_rotation=1) as a
+    # side effect of setting up its test environment, and leaves it on after the
+    # app exits. `am start` behaves like tapping the launcher icon — no settings change.
+    LAUNCH_ACT="$("$ADB_BIN" "${ADB_ARGS[@]}" shell cmd package resolve-activity --brief "$PACKAGE" 2>/dev/null | tail -1 | tr -d '\r')"
+    [[ "$LAUNCH_ACT" == */* ]] || LAUNCH_ACT="$PACKAGE/com.godot.game.GodotAppLauncher"
+    "$ADB_BIN" "${ADB_ARGS[@]}" shell am start -n "$LAUNCH_ACT" >/dev/null
     if [[ "${LOGCAT:-0}" == "1" ]]; then
         echo ">> Tailing logcat (Ctrl+C to stop)"
         "$ADB_BIN" "${ADB_ARGS[@]}" logcat -v time godot:V "*:S"
