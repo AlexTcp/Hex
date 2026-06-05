@@ -3,5 +3,13 @@
     <TargetFramework>net8.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Nullable>disable</Nullable>
+    <!-- Silence CS8632 from the vendored addons/gdUnit4 sources (they use nullable
+         '?' annotations while this project keeps Nullable disabled). The warning is
+         harmless at compile time, but Godot's headless Mono Android export crashes
+         (signal 11) trying to render build diagnostics in the editor-only
+         BuildProblemsView panel, which does not exist when exporting without a
+         display. Keeping the build diagnostic-free is what lets the export run
+         headlessly. See ../export_android.sh header. -->
+    <NoWarn>$(NoWarn);CS8632</NoWarn>
   </PropertyGroup>
 </Project>
