@@ -58,7 +58,9 @@ public partial class DebugLog : Node
         Instance = this;
         _logger = new CapturingLogger(this);
         OS.AddLogger(_logger);
+#if DEBUG
         GD.Print("[DebugLog] ready");
+#endif
         CallDeferred(MethodName.AttachOverlay);
     }
 
@@ -150,13 +152,17 @@ public partial class DebugLog : Node
     private void OpenModal() => _modal?.Open();
     private void OpenSettings()
     {
+#if DEBUG
         GD.Print("[DebugLog] gear Pressed — opening settings");
+#endif
         _settings?.Open();
     }
 
     private void FlashGear(Control button, Color originalModulate)
     {
+#if DEBUG
         GD.Print("[DebugLog] gear ButtonDown received");
+#endif
         if (_gearFlashTween != null && _gearFlashTween.IsValid()) _gearFlashTween.Kill();
         button.Modulate = new Color(1.0f, 0.9f, 0.2f, 1.0f);
         _gearFlashTween = CreateTween();
