@@ -1,31 +1,11 @@
-[gd_scene load_steps=4 format=3 uid="uid://cgamescr001"]
+[gd_scene load_steps=3 format=3 uid="uid://cgamescr001"]
 
 [ext_resource type="Script" path="res://scripts/UI/GameScreen.cs" id="1_game"]
 [ext_resource type="Script" path="res://scripts/Board/HexBoard.cs" id="2_board"]
 
-[sub_resource type="Environment" id="Env_default"]
-background_mode = 1
-background_color = Color(0.08, 0.09, 0.13, 1)
-ambient_light_source = 2
-ambient_light_color = Color(0.6, 0.65, 0.8, 1)
-ambient_light_energy = 0.5
-
 [node name="Game" type="Node3D"]
 script = ExtResource("1_game")
 BoardPath = NodePath("HexBoard")
-TokenListPath = NodePath("UI/Root/LeftPanel/Margin/VBox/Scroll/TokenList")
-DescriptionPath = NodePath("UI/Root/Description")
-
-[node name="WorldEnv" type="WorldEnvironment" parent="."]
-environment = SubResource("Env_default")
-
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, -2, 6, 0)
-current = true
-
-[node name="Light" type="DirectionalLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.7071, -0.7071, 0, 0.7071, 0.7071, 0, 6, 4)
-light_energy = 1.1
 
 [node name="HexBoard" type="Node3D" parent="."]
 script = ExtResource("2_board")
@@ -39,51 +19,3 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
-
-[node name="LeftPanel" type="PanelContainer" parent="UI/Root"]
-layout_mode = 1
-anchor_top = 0.0
-anchor_bottom = 1.0
-offset_right = 640.0
-custom_minimum_size = Vector2(640, 0)
-
-[node name="Margin" type="MarginContainer" parent="UI/Root/LeftPanel"]
-layout_mode = 2
-theme_override_constants/margin_left = 128
-theme_override_constants/margin_top = 0
-theme_override_constants/margin_right = 128
-theme_override_constants/margin_bottom = 0
-
-[node name="VBox" type="VBoxContainer" parent="UI/Root/LeftPanel/Margin"]
-layout_mode = 2
-theme_override_constants/separation = 20
-
-[node name="Scroll" type="ScrollContainer" parent="UI/Root/LeftPanel/Margin/VBox"]
-layout_mode = 2
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="TokenList" type="VBoxContainer" parent="UI/Root/LeftPanel/Margin/VBox/Scroll"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="Description" type="Label" parent="UI/Root"]
-layout_mode = 1
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 296.0
-offset_top = -72.0
-offset_right = -24.0
-offset_bottom = -16.0
-mouse_filter = 2
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.9, 0.92, 1, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.85)
-theme_override_constants/shadow_offset_x = 0
-theme_override_constants/shadow_offset_y = 0
-theme_override_constants/shadow_outline_size = 6
-text = ""

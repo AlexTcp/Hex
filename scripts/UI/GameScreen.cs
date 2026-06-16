@@ -2,201 +2,113 @@
 // GameScreen
 // =============================================================================
 // Purpose:
-//   Top-level Node3D for the in-game scene. Wires together the 3D HexBoard
-//   with a side panel of token-pick buttons: on _Ready it iterates
-//   TokenCatalog to populate a VBoxContainer with one toggle Button per
-//   token, displaying its name. When the player picks a token, GameScreen
-//   updates the GameSession's SelectedTokenIndex, swaps the board's active
-//   piece, and shows that token's description in the UI Label.
+//   Top-level Node3D bootstrap for the single persistent scene. Builds the
+//   Premium Slate 3D stage in code (WorldEnvironment, warm key + cool fill +
+//   central soft spotlight, and a slightly-tilted perspective camera), then
+//   constructs the ScreenManager and hands it the board, camera, session and
+//   UI root. All gameplay UI is owned by ScreenManager from there.
+//
+//   Lighting/camera are built in code (not the .tscn) so the exact C# values
+//   are typechecked; framing may want a small on-device tweak in the editor.
 //
 // Interactions:
-//   - HexBoard: fetched via GetNode<HexBoard>(BoardPath) and updated with
-//     SetToken(int index) whenever the player picks a different piece.
-//   - TokenCatalog: TokenInfo array iterated to build the picker UI without
-//     instantiating tokens.
-//   - GameSession: looked up at /root/GameSession to persist the player's
-//     SelectedTokenIndex for the session.
-//   - DebugLog: subscribes to GameplayActiveChanged to gate viewport
-//     PhysicsObjectPicking on/off as modals open and close.
+//   - HexBoard: fetched via BoardPath; driven by ScreenManager.
+//   - ScreenManager: created here and given the stage refs.
+//   - GameSession: the /root autoload, passed through to ScreenManager.
 // =============================================================================
 
 using Godot;
 using HexGame.Board;
-using HexGame.Tokens;
 
 namespace HexGame.UI;
 
 public partial class GameScreen : Node3D
 {
     [Export] public NodePath BoardPath;
-    [Export] public NodePath TokenListPath;
-    [Export] public NodePath DescriptionPath;
 
     private HexBoard _board;
-    private Label _description;
-    private Button _selectedButton;
-    private GameSession _session;
-    private Label _hudLabel;
-    private int _remaining;
-    private int _wave = 1;
-    private ulong _flashUntilMs;
+    private ScreenManager _screens;
 
     public override void _Ready()
     {
-        SetGameplayActive(!DebugLog.IsAnyModalOpen);
-        DebugLog.GameplayActiveChanged += SetGameplayActive;
-
         _board = GetNode<HexBoard>(BoardPath);
-        _description = GetNode<Label>(DescriptionPath);
-        _session = GetNode<GameSession>("/root/GameSession");
-        var list = GetNode<VBoxContainer>(TokenListPath);
-        var scroll = list.GetParent<ScrollContainer>();
-        scroll.GetVScrollBar().CustomMinimumSize = new Vector2(24, 0);
+        var root = GetNode<Control>("UI/Root");
+        var session = GetNode<GameSession>("/root/GameSession");
 
-        for (int i = 0; i < TokenCatalog.All.Length; i++)
-        {
-            var info = TokenCatalog.All[i];
-            var index = i;
-            var description = info.Description;
-            var button = new Button
-            {
-                Text = info.Name,
-                CustomMinimumSize = new Vector2(0, 80),
-                ToggleMode = true,
-                Alignment = HorizontalAlignment.Left,
-            };
-            button.AddThemeFontSizeOverride("font_size", 32);
-            button.Pressed += () => OnPickToken(index, button, description);
-            list.AddChild(button);
-        }
+        var camera = BuildStage();
 
-        BuildHud();
-        BuildReachToggle();
-        _board.EnemiesChanged += OnEnemiesChanged;
-        _board.BoardSolved += OnBoardSolved;
-        _board.WaveChanged += OnWaveChanged;
-        _board.ComboChanged += OnComboChanged;
+        _screens = new ScreenManager(_board, camera, session, root);
+        AddChild(_screens);
 
-        GD.Print($"[GameScreen] _Ready done, camera={GetViewport().GetCamera3D()?.Name}, viewport={GetViewport().GetVisibleRect().Size}");
+#if DEBUG
+        GD.Print($"[GameScreen] _Ready done, camera={camera.Name}, viewport={GetViewport().GetVisibleRect().Size}");
+#endif
     }
 
-    private void BuildHud()
+    // Premium Slate stage, all Compatibility-renderer safe (no glow/SSAO/SSR):
+    // dark slate background + cool flat ambient + Filmic tonemap; a warm key
+    // light that casts the grounding shadow, a cool fill that lifts shadowed
+    // faces, and a soft central spotlight that focuses the board and pairs with
+    // the vignette.
+    private Camera3D BuildStage()
     {
-        var uiRoot = GetNode<Control>("UI/Root");
-        _hudLabel = new Label
+        var env = new Godot.Environment
         {
-            Text = "",
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = new Color(0.055f, 0.063f, 0.082f),
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = new Color(0.165f, 0.196f, 0.259f),
+            AmbientLightEnergy = 0.30f,
+            TonemapMode = Godot.Environment.ToneMapper.Filmic,
+            TonemapExposure = 1.0f,
         };
-        _hudLabel.SetAnchorsPreset(Control.LayoutPreset.TopWide);
-        _hudLabel.OffsetTop = 24;
-        _hudLabel.OffsetBottom = 88;
-        _hudLabel.AddThemeFontSizeOverride("font_size", 36);
-        _hudLabel.AddThemeColorOverride("font_color", new Color(1f, 0.95f, 0.8f));
-        _hudLabel.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.85f));
-        _hudLabel.AddThemeConstantOverride("shadow_outline_size", 6);
-        uiRoot.AddChild(_hudLabel);
-    }
+        AddChild(new WorldEnvironment { Environment = env });
 
-    private string HudText() => _remaining > 0 ? $"Wave {_wave}   Enemies: {_remaining}" : "Cleared!";
-
-    private void OnEnemiesChanged(int remaining)
-    {
-        _remaining = remaining;
-        if (Time.GetTicksMsec() < _flashUntilMs) return;
-        _hudLabel.Text = HudText();
-    }
-
-    private void OnWaveChanged(int wave)
-    {
-        _wave = wave;
-        if (Time.GetTicksMsec() < _flashUntilMs) return;
-        _hudLabel.Text = HudText();
-    }
-
-    private void OnComboChanged(int combo)
-    {
-        _hudLabel.Text = $"Combo x{combo}!";
-        _flashUntilMs = Time.GetTicksMsec() + 700;
-        FlashPop(1.3f, 0.12f);
-
-        var timer = GetTree().CreateTimer(0.7);
-        timer.Timeout += () =>
+        var key = new DirectionalLight3D
         {
-            if (!IsInstanceValid(_hudLabel)) return;
-            if (Time.GetTicksMsec() < _flashUntilMs) return;   // a newer flash superseded this one
-            _flashUntilMs = 0;
-            _hudLabel.Text = HudText();
+            LightColor = new Color(1.0f, 0.957f, 0.878f),   // warm key
+            LightEnergy = 1.15f,
+            ShadowEnabled = true,
         };
-    }
+        key.RotationDegrees = new Vector3(-58f, 28f, 0f);
+        AddChild(key);
 
-    private void OnBoardSolved()
-    {
-        _hudLabel.Text = "Cleared!";
-        _flashUntilMs = Time.GetTicksMsec() + 900;
-        FlashPop(1.35f, 0.14f);
-
-        var timer = GetTree().CreateTimer(0.9);
-        timer.Timeout += () =>
+        var fill = new DirectionalLight3D
         {
-            if (!IsInstanceValid(_hudLabel)) return;
-            if (Time.GetTicksMsec() < _flashUntilMs) return;   // a newer flash superseded this one
-            _flashUntilMs = 0;
-            _hudLabel.Text = HudText();
+            LightColor = new Color(0.725f, 0.776f, 0.878f), // cool fill
+            LightEnergy = 0.35f,
+            ShadowEnabled = false,
         };
-    }
+        fill.RotationDegrees = new Vector3(-22f, -140f, 0f);
+        AddChild(fill);
 
-    private void FlashPop(float scale, float upDuration)
-    {
-        _hudLabel.PivotOffset = _hudLabel.Size / 2f;
-        var pop = CreateTween();
-        pop.TweenProperty(_hudLabel, "scale", new Vector2(scale, scale), upDuration)
-            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
-        pop.TweenProperty(_hudLabel, "scale", Vector2.One, 0.22f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-    }
-
-    private void BuildReachToggle()
-    {
-        var uiRoot = GetNode<Control>("UI/Root");
-        var btn = new CheckButton { Text = "Reach" };
-        btn.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
-        btn.GrowHorizontal = Control.GrowDirection.Begin;
-        btn.OffsetRight = -24;
-        btn.AddThemeFontSizeOverride("font_size", 26);
-        btn.Toggled += on => _board.SetShowReach(on);
-        uiRoot.AddChild(btn);
-    }
-
-    public override void _ExitTree()
-    {
-        DebugLog.GameplayActiveChanged -= SetGameplayActive;
-        if (_board != null)
+        var spot = new SpotLight3D
         {
-            _board.EnemiesChanged -= OnEnemiesChanged;
-            _board.BoardSolved -= OnBoardSolved;
-            _board.WaveChanged -= OnWaveChanged;
-            _board.ComboChanged -= OnComboChanged;
-        }
-    }
+            LightColor = new Color(1f, 1f, 1f),
+            LightEnergy = 1.4f,
+            SpotRange = 13f,
+            SpotAngle = 34f,
+            SpotAngleAttenuation = 1.8f,
+            ShadowEnabled = false,
+        };
+        spot.Position = new Vector3(0f, 7f, 0f);
+        spot.RotationDegrees = new Vector3(-90f, 0f, 0f);  // straight down at board centre
+        AddChild(spot);
 
-    public void SetGameplayActive(bool active)
-    {
-        var viewport = GetViewport();
-        if (viewport != null) viewport.PhysicsObjectPicking = active;
-        GD.Print($"[DIAG-GATE] active={active} anyModalOpen={DebugLog.IsAnyModalOpen} picking={viewport?.PhysicsObjectPicking}");
-    }
-
-    private void OnPickToken(int index, Button button, string description)
-    {
-        _session.SelectedTokenIndex = index;
-        _board.SetToken(index);
-        _description.Text = description;
-
-        if (_selectedButton != null && _selectedButton != button)
-            _selectedButton.ButtonPressed = false;
-        button.ButtonPressed = true;
-        _selectedButton = button;
+        // Framing is biased for SAFE MARGIN (the one thing not verifiable without a
+        // render): pulled back to ~10.9u with FOV 46 so the radius-4 board's near
+        // edge (~z 3.8 incl. tile geometry, ~21° off-axis) clears the ~23° half-FOV
+        // with room to spare; the vignette frames the slack. Nudge live in-editor for
+        // a tighter fit if desired.
+        var camera = new Camera3D
+        {
+            Projection = Camera3D.ProjectionType.Perspective,
+            Fov = 46f,
+            Current = true,
+        };
+        camera.Position = new Vector3(0f, 10.5f, 3.0f);
+        AddChild(camera);
+        camera.LookAt(Vector3.Zero, Vector3.Up);   // after entering tree (uses global xform)
+        return camera;
     }
 }

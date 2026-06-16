@@ -34,25 +34,50 @@ public abstract partial class Token : Node3D
     protected abstract Mesh GetSharedMesh();
     protected abstract StandardMaterial3D GetSharedMaterial();
 
+    private MeshInstance3D _visual;
+
     public override void _Ready()
     {
-        var visual = new MeshInstance3D
+        _visual = new MeshInstance3D
         {
             Mesh = GetSharedMesh(),
             MaterialOverride = GetSharedMaterial(),
         };
-        AddChild(visual);
+        AddChild(_visual);
     }
+
+    // Swap the piece's surface to a transient material (e.g. the gold "selected"
+    // look the board applies while a move is being chosen) without disturbing the
+    // shared identity material.
+    public void SetActiveMaterial(StandardMaterial3D mat)
+    {
+        if (_visual != null) _visual.MaterialOverride = mat;
+    }
+
+    public void RestoreMaterial()
+    {
+        if (_visual != null) _visual.MaterialOverride = GetSharedMaterial();
+    }
+
+    // Premium Slate: tokens read as polished, tinted metal (no self-glow — the
+    // emissive look fights the tournament-grade aesthetic; the shine is earned
+    // from the light rig instead). Each identity colour is lerped toward a neutral
+    // steel so pieces read as tinted alloy rather than painted plastic. Highlight
+    // comes only from direct light (no SSR/probes in the Compatibility renderer),
+    // so the rim term defines the silhouette edge.
+    private static readonly Color MetalBase = new(0.78f, 0.80f, 0.82f);
 
     protected static StandardMaterial3D MakeMaterial(Color color)
     {
         return new StandardMaterial3D
         {
-            AlbedoColor = color,
-            Roughness = 0.4f,
-            Metallic = 0.1f,
-            EmissionEnabled = true,
-            Emission = color * 0.25f,
+            AlbedoColor = color.Lerp(MetalBase, 0.45f),
+            Metallic = 0.85f,
+            MetallicSpecular = 0.6f,
+            Roughness = 0.30f,
+            RimEnabled = true,
+            Rim = 0.25f,
+            RimTint = 0.5f,
         };
     }
 

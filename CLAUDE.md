@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Hex** is a minimalist Godot 4.6 (mono, .NET 8) hex-grid movement puzzle. The player picks one of 14 token types (Walker, Charger, Stepper, Skipper, Runner, Hopper, Jumper, Halo, Diamond, Glider, Knight, Camel, Spiral, Drifter) and taps tiles to move it across a 61-tile board (radius 4). Each token type encodes a different movement rule — that rule *is* the puzzle. All current rules generate destinations relative to the token's position (`from + offset`); the previous origin-anchored set (Mirror, Ringwalk, Orbit, Edge, Anchor, Echo, Pivot, Shrine) has been removed.
+**Hex** is a Godot 4.6 (mono, .NET 8) hex-grid movement **hunt** with a "Premium Slate" tournament-board look. The player chooses one of 14 token archetypes (Walker, Charger, Stepper, Skipper, Runner, Hopper, Jumper, Halo, Diamond, Glider, Knight, Camel, Spiral, Drifter) — each encodes a unique movement rule, and that rule *is* the character — then clears waves of **hunters** on a 61-tile board (radius 4) by moving onto them (capture). Destinations are generated relative to the token (`from + offset`); the old origin-anchored set (Mirror, Ringwalk, Orbit, Edge, Anchor, Echo, Pivot, Shrine) was removed.
 
-The codebase is small (11 C# files) and heavily optimized for low-spec mobile: GL Compatibility renderer, zero-alloc movement generation, shared GPU resources, signal-based input gating. Most recent commits are perf audit follow-ups — preserve the zero-alloc invariants when touching gameplay code.
+**Stakes & meta:** Chase hunters can step onto the player → **game over** (`PlayerCaught`). The fail-state is kept fair: a candidate move tile is painted red ("death tile") iff a non-grace Chase hunter is adjacent to it (an exact, zero-alloc `Distance==1` test, since Chase minimises distance-to-player and the player tile is a strict distance-0 minimum). Wave 1 is all-RandomWalk (un-losable teaching); later waves add Chasers (≤70% cap); freshly spawned hunters get a one-turn grace; a mercy rule frees the player if *every* legal move is lethal. Scoring: capture = `100 × min(combo,5)`, wave-clear = `250 × wave`. Best wave / high score / per-token bests / tutorial-seen persist to `user://hex.cfg`. Flow: **Title → Character-Select → Run → Game-Over → retry**, all as Control overlays over a board that never unloads.
+
+The codebase is still small and heavily optimized for low-spec mobile: **GL Compatibility renderer (no glow/SSAO/SSR/GPU-particles — see the design constraints)**, zero-alloc movement generation, shared static GPU resources, signal-based input gating. Preserve the zero-alloc invariants when touching gameplay code.
 
 ## Build & Run
 
@@ -18,16 +20,16 @@ The codebase is small (11 C# files) and heavily optimized for low-spec mobile: G
 ## Autoloads (`project.godot` `[autoload]`)
 
 - **`DebugLog`** (`scripts/DebugLog.cs`) — singleton. Installs an `OS.AddLogger` capturing every Godot `print` / `push_error` into a 500-entry ring buffer. Owns the top-right gear button → `SettingsModal` (sliding drawer) → `DebugModal` (full-screen log viewer with copy/clear).
-- **`GameSession`** (`scripts/GameSession.cs`) — lightweight state holder. Currently just `SelectedTokenIndex` (int), persisted across scene transitions.
+- **`GameSession`** (`scripts/GameSession.cs`) — single source of truth for cross-screen state. Live run: `SelectedTokenIndex`, `Score`, `Wave`. Persisted meta (via `ConfigFile` at `user://hex.cfg` `[progress]`): `BestWave`, `HighScore`, `TutorialSeen`, `PerTokenBestWave[14]`. Loads on `_Ready`; saves on `CommitRun` (game over), `MarkTutorialSeen`, and app-pause/close `_Notification`.
 
 ## Architecture
 
 ### Core Game Loop
 
-1. **Init**: `HexBoard._Ready` enumerates `HexCoord.Within(radius=4)` to build 61 tiles. Each tile is an `Area3D` + `MeshInstance3D` sharing one static `CylinderMesh` + `CylinderShape3D`. `GameScreen._Ready` builds the 14-button picker from `TokenCatalog.All`; pre-selects Walker (index 0).
-2. **First tap** on the current token's tile → `BeginSelect()` calls `Token.LegalMoves(from, radius, _movesBuffer)`, swaps the `MaterialOverride` of each legal-move tile to the shared gold emissive material.
-3. **Second tap** on a highlighted tile → `MoveTokenTo(coord)` tweens the token (0.18s Sine-out) to the new world position, then `EndSelect()` restores base materials.
-4. **Picker** → `OnPickToken(idx)` updates `GameSession.SelectedTokenIndex`, calls `HexBoard.SetToken(idx)` (frees the old token, instantiates the new via `TokenCatalog.All[idx].Factory()`).
+1. **Init**: `GameScreen._Ready` (root bootstrap) builds the 3D stage *in code* — `WorldEnvironment` (slate `Color` bg, cool flat ambient, Filmic tonemap), warm key + cool fill + central soft `SpotLight3D`, and a tilted perspective `Camera3D` — then constructs `ScreenManager` and hands it the board, camera, session and UI root. `HexBoard._Ready` builds 61 tiles (`Area3D` + `MeshInstance3D` sharing one static `CylinderMesh` + `CylinderShape3D`). `ScreenManager` boots to **Title**.
+2. **Select → run**: `CharacterSelect` previews a piece via `HexBoard.SetToken(idx)` (no hunters); **START** calls `HexBoard.StartRun(idx)` (zero score/wave/combo, spawn wave 1). `SetToken` (preview) and `StartRun` (commit) are distinct entry points.
+3. **First tap** on the token's tile → `BeginSelect()` fills `_movesBuffer`, paints each legal tile gold (move), copper (capture — hunter present), or **red (death tile)**, and pulses them via one shared looped tween. Mercy + telegraph computed here.
+4. **Second tap** on a highlighted tile → `MoveTokenTo(coord)`: commit pos → `TryCapture` (+score/combo, spark burst) → wave-clear short-circuit (bonus + ramp + grace respawn) → else hunters step (`AdvanceEnemies`) with a per-hunter caught check that emits `PlayerCaught` and stops on the first catcher. `ScreenManager` listens to `PlayerCaught`/`ScoreChanged`/`WaveChanged`/`EnemiesChanged`/`ComboChanged`/`BoardSolved`/`ThreatChanged` to drive the HUD and the Title→…→GameOver flow.
 
 ### Hex Coordinate System
 
@@ -81,11 +83,13 @@ These are the patterns the recent perf audit established. Don't regress them:
 
 | Path | Contents |
 |------|----------|
-| `scenes/game.tscn` | Single game scene — `GameScreen` (Node3D) + `HexBoard` (Node3D) + CanvasLayer for UI |
-| `scripts/Board/` | `HexBoard.cs` |
+| `scenes/game.tscn` | Single persistent scene — minimal: `GameScreen` (Node3D) + `HexBoard` (Node3D) + `UI` CanvasLayer + `Root` Control. Camera/lights/environment are built in code by `GameScreen`. |
+| `scripts/Board/` | `HexBoard.cs` (tiles, hunters, turn resolution, fail-state, scoring, FX) |
 | `scripts/Hex/` | `HexCoord.cs`, `HexLayout.cs` |
-| `scripts/Tokens/` | `Token.cs`, `Tokens.cs`, `TokenCatalog.cs` |
-| `scripts/UI/` | `GameScreen.cs` |
-| `scripts/` (root) | `DebugLog.cs`, `GameSession.cs`, `DebugModal.cs`, `SettingsModal.cs` |
-| `textures/` | `gear.png` only |
+| `scripts/Tokens/` | `Token.cs` (base + gold-swap), `Tokens.cs` (14 rules + meshes), `TokenCatalog.cs` |
+| `scripts/UI/` | `GameScreen.cs` (stage bootstrap), `ScreenManager.cs` (state machine), `UiTheme.cs` (palette/Theme/factories/vignette), `Hud.cs`, `TitleScreen.cs`, `CharacterSelect.cs`, `PauseOverlay.cs`, `GameOverScreen.cs`, `TutorialOverlay.cs` |
+| `scripts/` (root) | `DebugLog.cs`, `GameSession.cs` (state + persistence), `Haptics.cs`, `DebugModal.cs`, `SettingsModal.cs` |
+| `textures/ui/` | `gear.png` (vignette is a code shader, not an asset) |
 | `android/` | Godot Android export template (do not hand-edit) |
+
+**Premium Slate / Compatibility constraints (hard rules for visual work):** the GL Compatibility renderer has NO glow/bloom, SSAO, SSR, ReflectionProbe, SDFGI, volumetric fog, DOF, FXAA/TAA, or reliable GPU particles. The "glow" of the active piece is an **emissive material**; the vignette is a **`canvas_item` shader** ColorRect; capture sparks use **`CpuParticles3D`**; AA is **`msaa_3d`** only (cosmetic — never make readability depend on it). Keep tiles at `RadialSegments = 6` (a hex grid, not a dodecagon).
