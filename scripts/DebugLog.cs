@@ -149,7 +149,6 @@ public partial class DebugLog : Node
         root.AddChild(_settings);
     }
 
-    private void OpenModal() => _modal?.Open();
     private void OpenSettings()
     {
 #if DEBUG

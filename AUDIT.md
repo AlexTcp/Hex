@@ -1,26 +1,40 @@
-# AUDIT.md — Hex
+# Hex — Code Review Audit
 
-- **Run:** `/audit --fix` (all-projects sweep), 2026-06-02
-- **Scope:** all `scripts/**/*.cs` (12 files, ~2.2k LOC). Excluded `obj/`, `bin/`, `.godot/`, `*.g.cs`, `android/`.
-- **Min-confidence:** 80. **--fix:** applied. **Result: 0 findings at/above cutoff — clean pass.**
-- **Method:** the entire gameplay core was read directly and verified: `HexCoord` (axial math, `Within`/`Ring`/`Distance`), all 14 token movement rules + `Token.Filter`, and `HexBoard` (input → select → move, the enemy/wave/combo/capture system, tween + signal cleanup).
+**Scope:** `G:\Hex\scripts\**\*.cs` (gameplay + UI). Excluded `\addons\`, `\.godot\`, `\obj\`, `\bin\`, `\android\build\`, generated `*.g.cs`/`*.Designer.cs`. No `.audit-ignore` present. The `.gd` files all live under `android\build\` (excluded).
+**Files reviewed:** 21 C# source files (~3.4k lines).
+**Min confidence kept:** 80. **`--fix` ran:** yes (1 mechanical fix applied; rest report-only).
 
-## Findings kept (≥80)
-**None.** This is a small, perf-audited codebase and the gameplay logic held up under direct review.
+This is a small, unusually well-engineered project: zero-alloc movement, shared static GPU resources, disciplined signal cleanup in `_ExitTree`, bounded scores/waves, non-negative resource invariants. The fail-state math (`IsDeathTile`, mercy, spawn-grace) is correct and matches the spec. Very few findings cleared the bar; most candidates were intentional, documented approximations.
 
-## Verified-clean (explicitly checked)
-- **`HexCoord`** — canonical Red-Blob ring walk (start `Directions[4]*radius`, 6 sides), correct axial `Within` range, `(|q|+|r|+|s|)/2` distance, `Q,R`-based equality/hash (S derived). Correct.
-- **All 14 token `LegalMoves`** (Walker/Runner/Jumper/Halo/Knight/Camel/Stepper/Hopper/Spiral/Charger/Diamond/Glider/Skipper/Drifter) — offsets correct, all route through `Filter` (drops origin tile + out-of-bounds via `DistanceFromOrigin`); slides bound by `boardRadius`; zero-alloc buffer reuse honored.
-- **`HexBoard`** — selection memoization `(token,pos)` short-circuit; per-tile `InputEvent` Callables disconnected in `_ExitTree`; both `_ringTween` and `_pulseTween` killed on exit (`StopHighlightPulse`); diagnostic `GD.Print`s all `#if DEBUG`-gated (CLAUDE.md perf rule honored).
-- **Enemy system (undocumented new code)** — sequential `AdvanceEnemies` with immediate position update + `IsEnemyAt(n, index)` guard guarantees no two enemies share a tile and never step onto the player; `ComputeReachable` BFS over the token's own move graph guarantees enemies only spawn on solvable tiles (e.g. avoids parity-locked Jumper dead spawns); `TryCapture` removes exactly one enemy per tile (tiles hold ≤1 enemy by construction).
+---
 
-## Sub-threshold / informational (NOT a finding)
-- **Telegraph vs. actual enemy resolution can diverge.** `PredictEnemyStep` is called independently per enemy (from current positions) for the move preview, while `AdvanceEnemies` resolves sequentially (updating positions as it goes). When two enemies' moves would block each other, the previewed step can differ from the executed one. Preview-accuracy imperfection only — game state stays correct. Conf ~50, below cutoff; left as-is.
+## Reuse / Dead code
 
-## Test gaps (no test suite)
-- **Token `LegalMoves` correctness** — a table-driven test (token × from-position → expected destination set, incl. board-edge clamping) would lock the puzzle rules.
-- **`ComputeReachable` solvability invariant** — assert every spawned enemy tile is in the token's reachable set for each of the 14 tokens (the property the design depends on).
-- **`AdvanceEnemies` no-overlap / no-onto-player invariant** under dense enemy counts.
+### 1. `DebugLog.OpenModal` is unused — LOW · effort S · confidence 90 · FIXED
+[scripts/DebugLog.cs:152](scripts/DebugLog.cs#L152)
+`private void OpenModal() => _modal?.Open();` is never called. The gear button routes through `OpenSettings`, and the Settings drawer opens the log via the `() => _modal?.Open()` callback passed to `SettingsModal`. Dead private method.
+**Reason:** mechanical, behavior-preserving deletion. Applied (`.bak` written first).
 
-## Newly-confirmed finding keys
-_(none)_
+---
+
+## Report-only (below 80, or behavior-changing — left unmodified)
+
+These were examined and deliberately **not** fixed. Listed for transparency.
+
+- **Telegraph ignores mercy** — [scripts/Board/HexBoard.cs:622](scripts/Board/HexBoard.cs#L622). `ShowTelegraph` predicts Chase steps with `mercy: false`; if `_mercyThisTurn` is active for the upcoming resolution, the ghost marker shows a step onto the player that the hunter won't actually take. Cosmetic only; mercy is a rare edge. Confidence ~70. Behavior-affecting — report-only.
+- **`_inDanger` not reset on run start** — [scripts/Board/HexBoard.cs:82](scripts/Board/HexBoard.cs#L82). `StartRun`/`SetToken` don't reset the cached `_inDanger`; a run that ends while in danger leaves it `true`. Self-correcting: the next `SpawnWave`→`UpdateThreat` re-emits on the real flip (wave 1 has no Chasers, so danger=false is emitted correctly). No observed user-facing defect. Confidence ~60.
+- **`Filter` board-bounds via `DistanceFromOrigin()`** — [scripts/Tokens/Token.cs:91](scripts/Tokens/Token.cs#L91). Correct only because the board is a radius-`Radius` hexagon centered at `(0,0)`. Callers also re-validate with `_tiles.ContainsKey`, so it's safe and consistent today; flagged as an implicit coupling to "board is centered at origin," not a bug.
+- **`Spiral`/`Drifter` are flood discs, not spirals/drifts** — [scripts/Tokens/Tokens.cs:201](scripts/Tokens/Tokens.cs#L201). Movement rules (`Within(2)` / `Within(3)`) match their catalog descriptions exactly; only the flavor names imply otherwise. Design choice, not a defect.
+
+---
+
+## Lenses with no qualifying findings
+
+- **Correctness / game-rule invariants:** score, combo (`min(combo,5)`), wave count, enemy count all bounded and non-negative; capture/spawn/wave-clear ordering in `MoveTokenTo` is correct; mercy + spawn-grace honored.
+- **CLAUDE.md compliance:** zero-alloc movement preserved, shared `static readonly` GPU resources, selection memoization intact, per-tile Callables disconnected in `_ExitTree`, diagnostic `GD.Print` wrapped in `#if DEBUG`. No violations.
+- **Godot correctness / lifecycle:** signal subscribe/unsubscribe balanced in `ScreenManager`; tweens killed in `_ExitTree`; `IsInstanceValid` guards before touching pooled nodes; `ConfigFile` load tolerates first-run (no throw).
+- **Resource/lifecycle leaks:** none found — enemies, telegraph nodes, rings, particles are all pooled or `QueueFree`d.
+- **Signal & call-graph wiring:** all 7 `HexBoard` signals are wired and torn down.
+
+## Test gaps (named, not blocking)
+No unit tests exist for the pure, highly-testable logic. Highest-value untested unit: **`HexCoord.Distance` / `Within` / `Ring`** (foundational hex math) and **`Token.Filter`** (two-pointer compaction + bounds). These are deterministic and alloc-sensitive — ideal regression targets.
