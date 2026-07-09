@@ -11,7 +11,7 @@
 //
 // Interactions:
 //   - ScreenManager assigns Build() to UI/Root and uses the factories.
-//   - TitleScreen / CharacterSelect / Hud / PauseOverlay / GameOverScreen /
+//   - TitleScreen / NewRunScreen / ShopScreen / Hud / PauseOverlay / GameOverScreen /
 //     TutorialOverlay build their controls from these helpers.
 // =============================================================================
 

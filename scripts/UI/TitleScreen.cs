@@ -56,7 +56,7 @@ public partial class TitleScreen : Control
         logo.AddThemeConstantOverride("shadow_offset_x", 0);
         v.AddChild(logo);
 
-        v.AddChild(UiTheme.MakeLabel("a movement hunt", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center));
+        v.AddChild(UiTheme.MakeLabel("a hex-chess roguelike", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center));
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 28) });
 
         var play = UiTheme.PrimaryButton("PLAY");
@@ -75,7 +75,7 @@ public partial class TitleScreen : Control
         chips.SetAnchorsPreset(LayoutPreset.BottomWide);
         chips.OffsetTop = -96; chips.OffsetBottom = -40;
         chips.MouseFilter = MouseFilterEnum.Ignore;
-        chips.AddChild(StatChip("BEST WAVE", out _bestWave));
+        chips.AddChild(StatChip("BEST BATTLE", out _bestWave));
         chips.AddChild(StatChip("HIGH SCORE", out _highScore));
         AddChild(chips);
     }
@@ -95,7 +95,7 @@ public partial class TitleScreen : Control
 
     public void Refresh()
     {
-        if (_bestWave != null) _bestWave.Text = _session.BestWave > 0 ? _session.BestWave.ToString() : "—";
+        if (_bestWave != null) _bestWave.Text = _session.BestBattle > 0 ? _session.BestBattle.ToString() : "—";
         if (_highScore != null) _highScore.Text = _session.HighScore.ToString();
     }
 }

@@ -2,13 +2,14 @@
 // GameOverScreen
 // =============================================================================
 // Purpose:
-//   Run summary shown when a hunter catches the player: "CAUGHT", an optional
-//   "NEW BEST!" chip, the piece played, the wave reached and final score, and
-//   Retry (same piece) / Change Piece / Title.
+//   Run summary shown at the end of a run — defeat ("ARMY FALLEN") when the
+//   last piece is lost, or victory ("CROWN CLAIMED") after the final battle.
+//   Shows an optional "NEW BEST!" chip, the battle reached and final score,
+//   and New Run / Title buttons.
 //
 // Interactions:
-//   - ScreenManager: constructs with the three callbacks; calls
-//     Present(wave, score, newBest, pieceName) before showing.
+//   - ScreenManager: constructs with the two callbacks; calls
+//     Present(victory, battle, score, newBest) before showing.
 // =============================================================================
 
 using System;
@@ -18,21 +19,19 @@ namespace HexGame.UI;
 
 public partial class GameOverScreen : Control
 {
-    private readonly Action _onRetry;
-    private readonly Action _onChangePiece;
+    private readonly Action _onNewRun;
     private readonly Action _onTitle;
 
     private Label _title;
-    private Label _pieceName;
-    private Label _waveValue;
+    private Label _subtitle;
+    private Label _battleValue;
     private Label _scoreValue;
     private Control _newBestChip;
     private Tween _titleTween;
 
-    public GameOverScreen(Action onRetry, Action onChangePiece, Action onTitle)
+    public GameOverScreen(Action onNewRun, Action onTitle)
     {
-        _onRetry = onRetry;
-        _onChangePiece = onChangePiece;
+        _onNewRun = onNewRun;
         _onTitle = onTitle;
     }
 
@@ -62,24 +61,20 @@ public partial class GameOverScreen : Control
         _newBestChip.Visible = false;
         v.AddChild(_newBestChip);
 
-        _title = UiTheme.MakeLabel("CAUGHT", UiTheme.HeadingSize, UiTheme.Danger, HorizontalAlignment.Center);
+        _title = UiTheme.MakeLabel("ARMY FALLEN", UiTheme.HeadingSize, UiTheme.Danger, HorizontalAlignment.Center);
         v.AddChild(_title);
 
-        _pieceName = UiTheme.MakeLabel("", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center);
-        v.AddChild(_pieceName);
+        _subtitle = UiTheme.MakeLabel("", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center);
+        v.AddChild(_subtitle);
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 4) });
 
-        v.AddChild(ResultRow("WAVE REACHED", out _waveValue));
+        v.AddChild(ResultRow("BATTLE REACHED", out _battleValue));
         v.AddChild(ResultRow("SCORE", out _scoreValue));
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
 
-        var retry = UiTheme.PrimaryButton("RETRY");
-        retry.Pressed += () => _onRetry?.Invoke();
+        var retry = UiTheme.PrimaryButton("NEW RUN");
+        retry.Pressed += () => _onNewRun?.Invoke();
         v.AddChild(retry);
-
-        var change = UiTheme.SecondaryButton("CHANGE PIECE");
-        change.Pressed += () => _onChangePiece?.Invoke();
-        v.AddChild(change);
 
         var title = UiTheme.GhostButton("TITLE");
         title.Pressed += () => _onTitle?.Invoke();
@@ -97,14 +92,20 @@ public partial class GameOverScreen : Control
         return row;
     }
 
-    public void Present(int wave, int score, bool newBest, string pieceName)
+    public void Present(bool victory, int battle, int score, bool newBest)
     {
-        if (_waveValue != null) _waveValue.Text = wave.ToString();
+        if (_title != null)
+        {
+            _title.Text = victory ? "CROWN CLAIMED" : "ARMY FALLEN";
+            _title.AddThemeColorOverride("font_color", victory ? UiTheme.Accent : UiTheme.Danger);
+        }
+        if (_subtitle != null)
+            _subtitle.Text = victory ? "Every battle won. The board is yours." : "The last piece has been taken.";
+        if (_battleValue != null) _battleValue.Text = battle.ToString();
         if (_scoreValue != null) _scoreValue.Text = score.ToString();
-        if (_pieceName != null) _pieceName.Text = pieceName;
         if (_newBestChip != null) _newBestChip.Visible = newBest;
 
-        // One-time title fade/scale (no bounce — a loss should feel weighty).
+        // One-time title fade/scale (no bounce — the moment should feel weighty).
         if (_title != null)
         {
             _title.PivotOffset = _title.Size / 2f;

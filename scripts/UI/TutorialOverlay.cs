@@ -24,9 +24,9 @@ public partial class TutorialOverlay : Control
 
     private static readonly (string Title, string Body, bool Danger)[] Steps =
     {
-        ("Tap your piece", "Tap your glowing piece to reveal where it can move.", false),
-        ("Move & capture", "Tap a gold tile to move there. Land on a hunter to capture it — clear every hunter to advance. Each wave brings more.", false),
-        ("Don't get caught", "Hunters move right after you do — if one reaches your tile, the run ends. RED tiles warn you a hunter can catch you there. Ghost markers show where they'll step.", true),
+        ("Command your army", "Tap one of your ivory pieces to see its legal moves. Land on a black piece to capture it — clear them all to win the battle.", false),
+        ("Earn & spend", "Captures pay money. Between battles, spend it at the shop on new pieces, rule-bending Gambits, and permanent tile upgrades.", false),
+        ("Mind the board", "One enemy strikes back after each of your moves — RED tiles warn where you'd be captured. And the board crumbles from the outside in: don't linger on the rim.", true),
     };
 
     private ColorRect _scrim;

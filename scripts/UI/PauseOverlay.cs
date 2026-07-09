@@ -2,12 +2,12 @@
 // PauseOverlay
 // =============================================================================
 // Purpose:
-//   Centred pause panel: current wave/score line plus Resume / Change Piece /
-//   Quit to Title. The board is already frozen (no enemy stepping happens
-//   without a committed move, and picking is gated) so this is purely a menu.
+//   Centred pause panel: current battle/score line plus Resume / Abandon Run.
+//   The board is already frozen (no enemy acts without a committed player
+//   action, and picking is gated) so this is purely a menu.
 //
 // Interactions:
-//   - ScreenManager: constructs with the three callbacks; calls Refresh(wave,
+//   - ScreenManager: constructs with the two callbacks; calls Refresh(battle,
 //     score) before showing.
 // =============================================================================
 
@@ -19,15 +19,13 @@ namespace HexGame.UI;
 public partial class PauseOverlay : Control
 {
     private readonly Action _onResume;
-    private readonly Action _onChangePiece;
-    private readonly Action _onQuitTitle;
+    private readonly Action _onAbandon;
     private Label _stats;
 
-    public PauseOverlay(Action onResume, Action onChangePiece, Action onQuitTitle)
+    public PauseOverlay(Action onResume, Action onAbandon)
     {
         _onResume = onResume;
-        _onChangePiece = onChangePiece;
-        _onQuitTitle = onQuitTitle;
+        _onAbandon = onAbandon;
     }
 
     public override void _Ready()
@@ -60,17 +58,13 @@ public partial class PauseOverlay : Control
         resume.Pressed += () => _onResume?.Invoke();
         v.AddChild(resume);
 
-        var change = UiTheme.SecondaryButton("CHANGE PIECE");
-        change.Pressed += () => _onChangePiece?.Invoke();
-        v.AddChild(change);
-
-        var quit = UiTheme.DangerButton("QUIT TO TITLE");
-        quit.Pressed += () => _onQuitTitle?.Invoke();
+        var quit = UiTheme.DangerButton("ABANDON RUN");
+        quit.Pressed += () => _onAbandon?.Invoke();
         v.AddChild(quit);
     }
 
-    public void Refresh(int wave, int score)
+    public void Refresh(int battle, int score)
     {
-        if (_stats != null) _stats.Text = $"Wave {wave}    Score {score}";
+        if (_stats != null) _stats.Text = $"Battle {battle}    Score {score}";
     }
 }

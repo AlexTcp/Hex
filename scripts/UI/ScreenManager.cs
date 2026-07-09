@@ -2,33 +2,35 @@
 // ScreenManager
 // =============================================================================
 // Purpose:
-//   The app state machine and UI orchestrator. Owns the five overlay screens +
-//   the tutorial + the HUD + the scrim + the two vignettes, all as Control
-//   children of the persistent UI root (the 3D board never unloads behind
-//   them). Wires HexBoard's signals to the HUD and GameSession, drives screen
+//   The app state machine and UI orchestrator for the roguelike loop. Owns the
+//   overlay screens + tutorial + HUD + scrim + vignettes as Control children of
+//   the persistent UI root (the 3D board never unloads behind them). Wires
+//   HexBoard's battle signals to the HUD and GameSession, drives screen
 //   transitions (cross-fades), gates board input per-state (cooperating with
-//   the DebugLog modal), pulses the danger vignette, and runs the attract
-//   camera drift + the game-over shake.
+//   the DebugLog modal), pulses the danger vignette while the board is
+//   cracking, and runs the attract camera drift + the defeat shake.
 //
-// States: Title -> Select -> Playing -> (Paused) -> GameOver -> retry/back.
+// States: Title -> NewRun -> Playing -> (Paused) -> Shop -> ... -> GameOver.
+//   BattleWon routes to Shop, or to the victory presentation of GameOver after
+//   the final battle; BattleLost routes to the defeat presentation.
 //
 // Interactions:
-//   - GameScreen: builds the 3D stage (camera/lights/env), then constructs this
-//     with the board, camera, session and UI root, and calls GoTitle().
-//   - HexBoard: StartRun (commit) / SetToken (preview); listens to its signals.
-//   - GameSession: mirrors live score/wave, commits records on PlayerCaught.
+//   - GameScreen: builds the 3D stage, then constructs this with the board,
+//     camera, session and UI root, and calls GoTitle().
+//   - HexBoard: StartBattle / ShowPreview / BeginDeploy; listens to signals.
+//   - GameSession: owns the RunState; commits records at run end.
 // =============================================================================
 
 using System;
 using Godot;
 using HexGame.Board;
-using HexGame.Tokens;
+using HexGame.Chess;
 
 namespace HexGame.UI;
 
 public partial class ScreenManager : Node
 {
-    public enum AppState { Title, Select, Playing, Paused, GameOver }
+    public enum AppState { Title, NewRun, Playing, Paused, Shop, GameOver }
 
     private readonly HexBoard _board;
     private readonly Camera3D _camera;
@@ -43,7 +45,8 @@ public partial class ScreenManager : Node
     private Tween _dangerTween;
 
     private TitleScreen _title;
-    private CharacterSelect _select;
+    private NewRunScreen _newRun;
+    private ShopScreen _shop;
     private Hud _hud;
     private PauseOverlay _pause;
     private GameOverScreen _gameOver;
@@ -83,13 +86,16 @@ public partial class ScreenManager : Node
         _shakeTween?.Kill();
         if (_board != null)
         {
+            _board.MoneyChanged -= OnMoneyChanged;
             _board.ScoreChanged -= OnScoreChanged;
-            _board.WaveChanged -= OnWaveChanged;
             _board.EnemiesChanged -= OnEnemiesChanged;
-            _board.ComboChanged -= OnComboChanged;
-            _board.BoardSolved -= OnBoardSolved;
+            _board.ArmyChanged -= OnArmyChanged;
+            _board.CrumbleChanged -= OnCrumbleChanged;
             _board.ThreatChanged -= OnThreatChanged;
-            _board.PlayerCaught -= OnPlayerCaught;
+            _board.StatusNote -= OnStatusNote;
+            _board.DeployModeChanged -= OnDeployModeChanged;
+            _board.BattleWon -= OnBattleWon;
+            _board.BattleLost -= OnBattleLost;
         }
     }
 
@@ -98,8 +104,7 @@ public partial class ScreenManager : Node
     private void BuildOverlays()
     {
         // Behind everything: a static dark vignette frames the board; the danger
-        // vignette pulses red over it; the scrim dims for menus. All ignore input
-        // except the scrim when a menu is up.
+        // vignette pulses red while the board crumbles; the scrim dims for menus.
         AddRoot(UiTheme.Vignette(new Color(0, 0, 0), 0.78f));
         _dangerVignette = UiTheme.Vignette(UiTheme.Danger, 0.5f);
         _dangerVignette.Modulate = new Color(1, 1, 1, 0);
@@ -109,14 +114,15 @@ public partial class ScreenManager : Node
         _scrim.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddRoot(_scrim);
 
-        _hud = new Hud(GoPause, on => _board.SetShowReach(on));
-        _title = new TitleScreen(_session, () => GoSelect(), () => ShowTutorial());
-        _select = new CharacterSelect(_session, i => _board.SetToken(i), StartRun, GoTitle);
-        _pause = new PauseOverlay(ResumeFromPause, GoSelect, GoTitle);
-        _gameOver = new GameOverScreen(RetrySamePiece, GoSelect, GoTitle);
+        _hud = new Hud(GoPause, OnDeployRequested);
+        _title = new TitleScreen(_session, GoNewRun, ShowTutorial);
+        _newRun = new NewRunScreen(_session.RerollRun, BeginRun, GoTitle);
+        _shop = new ShopScreen(NextBattle);
+        _pause = new PauseOverlay(ResumeFromPause, AbandonRun);
+        _gameOver = new GameOverScreen(GoNewRun, GoTitle);
         _tutorial = new TutorialOverlay(OnTutorialComplete);
 
-        foreach (Control c in new Control[] { _hud, _title, _select, _pause, _gameOver, _tutorial })
+        foreach (Control c in new Control[] { _hud, _title, _newRun, _shop, _pause, _gameOver, _tutorial })
         {
             c.Visible = false;
             c.Modulate = new Color(1, 1, 1, 0);
@@ -132,35 +138,55 @@ public partial class ScreenManager : Node
 
     private void WireBoard()
     {
+        _board.MoneyChanged += OnMoneyChanged;
         _board.ScoreChanged += OnScoreChanged;
-        _board.WaveChanged += OnWaveChanged;
         _board.EnemiesChanged += OnEnemiesChanged;
-        _board.ComboChanged += OnComboChanged;
-        _board.BoardSolved += OnBoardSolved;
+        _board.ArmyChanged += OnArmyChanged;
+        _board.CrumbleChanged += OnCrumbleChanged;
         _board.ThreatChanged += OnThreatChanged;
-        _board.PlayerCaught += OnPlayerCaught;
+        _board.StatusNote += OnStatusNote;
+        _board.DeployModeChanged += OnDeployModeChanged;
+        _board.BattleWon += OnBattleWon;
+        _board.BattleLost += OnBattleLost;
     }
 
     // ----- Board signal handlers -----------------------------------------
 
-    private void OnScoreChanged(int score) { _session.Score = score; _hud.SetScore(score); }
-    private void OnWaveChanged(int wave) { _session.Wave = wave; _hud.SetWave(wave); }
+    private void OnMoneyChanged(int money) => _hud.SetMoney(money);
+    private void OnScoreChanged(int score) => _hud.SetScore(score);
     private void OnEnemiesChanged(int n) => _hud.SetEnemies(n);
-    private void OnComboChanged(int combo) => _hud.ShowCombo(combo);
-    private void OnBoardSolved() => _hud.ShowCleared();
+    private void OnArmyChanged(int onBoard, int reserve) => _hud.SetArmy(onBoard, reserve);
+    private void OnCrumbleChanged(int turnsLeft, bool cracking) => _hud.SetCrumble(turnsLeft, cracking);
+    private void OnStatusNote(string note) => _hud.ShowNote(note);
+    private void OnDeployModeChanged(bool active) => _hud.SetDeployArmed(active);
 
-    private void OnThreatChanged(bool inDanger)
+    private void OnThreatChanged(bool inDanger) => SetDangerVignette(inDanger);
+
+    private void OnBattleWon()
     {
-        _hud.SetThreat(inDanger);
-        SetDangerVignette(inDanger);
+        var run = _session.CurrentRun;
+        _hud.ShowCleared();
+
+        if (run.Battle > RunState.FinalBattle)
+        {
+            // The crown is won. Commit records and present the victory.
+            bool newBest = _session.CommitRun();
+            _gameOver.Present(victory: true, battle: RunState.FinalBattle, score: run.Score, newBest: newBest);
+            GoState(AppState.GameOver, _gameOver, 0.6f, 0.4f);
+            return;
+        }
+
+        _shop.Present(run);
+        StartDrift();
+        GoState(AppState.Shop, _shop, 0.55f, 0.4f);
     }
 
-    private void OnPlayerCaught()
+    private void OnBattleLost()
     {
         SetDangerVignette(false);
+        var run = _session.CurrentRun;
         bool newBest = _session.CommitRun();
-        string piece = TokenCatalog.All[Mathf.Clamp(_session.SelectedTokenIndex, 0, TokenCatalog.All.Length - 1)].Name;
-        _gameOver.Present(_session.Wave, _session.Score, newBest, piece);
+        _gameOver.Present(victory: false, battle: run.Battle, score: run.Score, newBest: newBest);
         Shake();
         GoState(AppState.GameOver, _gameOver, 0.6f, 0.3f);
     }
@@ -171,40 +197,61 @@ public partial class ScreenManager : Node
 
     public void GoTitle()
     {
-        _board.SetToken(_session.SelectedTokenIndex);   // preview piece behind the title
+        _board.ShowPreview();
         _title.Refresh();
         StartDrift();
         GoState(AppState.Title, _title, 0.55f);
     }
 
-    public void GoSelect()
+    private void GoNewRun()
     {
-        _select.Refresh();   // selects the current piece, which previews it on the board
+        var run = _session.StartNewRun();
+        _newRun.Present(run);
+        _board.ShowPreview();
         StartDrift();
-        GoState(AppState.Select, _select, 0.35f);
+        GoState(AppState.NewRun, _newRun, 0.45f);
     }
 
-    public void StartRun(int index)
+    private void BeginRun()
     {
-        _session.ResetRun(index);
-        StopDrift();
-        RestoreCamera();
-        _board.StartRun(index);
-        GoState(AppState.Playing, _hud, 0f);
-
+        NextBattle();
         if (!_session.TutorialSeen) ShowTutorial();
     }
 
-    private void RetrySamePiece() => StartRun(_session.SelectedTokenIndex);
+    // Entry point for every battle (first, post-shop, boss…).
+    private void NextBattle()
+    {
+        var run = _session.CurrentRun;
+        StopDrift();
+        RestoreCamera();
+        _hud.BindRun(run);
+        _hud.SetBattle(run.Battle, RunState.IsBossBattle(run.Battle));
+        _board.StartBattle(run);
+        GoState(AppState.Playing, _hud, 0f);
+    }
+
+    private void OnDeployRequested(int reserveIndex)
+    {
+        if (reserveIndex < 0) _board.CancelDeploy();
+        else _board.BeginDeploy(reserveIndex);
+    }
 
     private void GoPause()
     {
-        _board.ClearSelection();   // don't leave highlights/pulse/telegraph behind the menu
-        _pause.Refresh(_session.Wave, _session.Score);
+        _board.ClearSelection();   // don't leave highlights/pulse behind the menu
+        var run = _session.CurrentRun;
+        _pause.Refresh(run?.Battle ?? 1, run?.Score ?? 0);
         GoState(AppState.Paused, _pause, 0.5f, 0.18f);
     }
 
     private void ResumeFromPause() => GoState(AppState.Playing, _hud, 0f, 0.16f);
+
+    private void AbandonRun()
+    {
+        _session.CommitRun();
+        SetDangerVignette(false);
+        GoTitle();
+    }
 
     // Core transition: set state, fade scrim to its alpha, cross-fade screens.
     private void GoState(AppState state, Control screen, float scrimAlpha, float dur = 0.22f)
@@ -278,7 +325,7 @@ public partial class ScreenManager : Node
         }
     }
 
-    // ----- Camera attract drift + game-over shake ------------------------
+    // ----- Camera attract drift + defeat shake ----------------------------
 
     private void StartDrift()
     {
@@ -303,7 +350,7 @@ public partial class ScreenManager : Node
         _camera.Transform = _camRest;
     }
 
-    // Restrained game-over shake: a short decaying positional jitter, then snap
+    // Restrained defeat shake: a short decaying positional jitter, then snap
     // back to the cached rest transform.
     private void Shake()
     {
