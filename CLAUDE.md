@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Hex** is a Godot 4.6 (mono, .NET 8) hex-grid movement **hunt** with a "Premium Slate" tournament-board look. The player chooses one of 14 token archetypes (Walker, Charger, Stepper, Skipper, Runner, Hopper, Jumper, Halo, Diamond, Glider, Knight, Camel, Spiral, Drifter) — each encodes a unique movement rule, and that rule *is* the character — then clears waves of **hunters** on a 61-tile board (radius 4) by moving onto them (capture). Destinations are generated relative to the token (`from + offset`); the old origin-anchored set (Mirror, Ringwalk, Orbit, Edge, Anchor, Echo, Pivot, Shrine) was removed.
+**Hex** is a Godot 4.6 (mono, .NET 8) **hex-chess roguelike** with a "Premium Slate" tournament-board look. The player commands a small army of ivory hex-chess pieces (`PieceKind`: Pawn, King, Rook, Bishop, Knight, Queen) on a 61-tile board (radius 4), clearing run after run of battles against black pieces. Battles are fought on an **ActiveTiles** subset that grows through the run (radius 2 → 3 → 4); the objective is to capture every enemy piece before the board **crumbles** from the outside in or the army is wiped. Between battles a procedural **shop** sells new pieces, rule-bending **Gambits**, and permanent per-coordinate **tile upgrades**. Every 4th battle is a **boss** — a normal battle plus exactly one `BossModifier` (Lockmaker / Tax Collector / Crumble Crown). Winning battle 12 wins the run.
 
-**Stakes & meta:** Chase hunters can step onto the player → **game over** (`PlayerCaught`). The fail-state is kept fair: a candidate move tile is painted red ("death tile") iff a non-grace Chase hunter is adjacent to it (an exact, zero-alloc `Distance==1` test, since Chase minimises distance-to-player and the player tile is a strict distance-0 minimum). Wave 1 is all-RandomWalk (un-losable teaching); later waves add Chasers (≤70% cap); freshly spawned hunters get a one-turn grace; a mercy rule frees the player if *every* legal move is lethal. Scoring: capture = `100 × min(combo,5)`, wave-clear = `250 × wave`. Best wave / high score / per-token bests / tutorial-seen persist to `user://hex.cfg`. Flow: **Title → Character-Select → Run → Game-Over → retry**, all as Control overlays over a board that never unloads.
+**Run loop:** Title → New Run (3 random starter pieces, $4) → Battle → Shop → … → Boss every 4th → Victory/Game Over. The run's mutable state lives in one `RunState` (money, score, battle number, `Army`, `Reserve`, `Gambits`, `TileUpgrades`). Army pieces auto-deploy at battle start on the home rows (positive R); reserve pieces can be deployed mid-battle for the player's action. A captured player piece is gone (Mercy Charter gambit can save the first each battle). Captures pay money (piece value + Gold-tile / gambit / boss bonuses) and score (`value × 100`); a battle clear pays `250 × battle` score and `4 + battle` money. Best battle / high score / tutorial-seen persist to `user://hex.cfg`. All screens are Control overlays over a 3D board that never unloads.
 
-The codebase is still small and heavily optimized for low-spec mobile: **GL Compatibility renderer (no glow/SSAO/SSR/GPU-particles — see the design constraints)**, zero-alloc movement generation, shared static GPU resources, signal-based input gating. Preserve the zero-alloc invariants when touching gameplay code.
+**Fairness:** exactly one enemy piece acts per player action (capture-if-possible → approach nearest player piece → random). A candidate destination is painted red ("death tile") iff some non-stunned enemy could capture it next turn — computed exactly by re-running the enemy move generator against a hypothetical occupancy (zero-alloc, no RNG). The crumble telegraphs: the doomed ring is painted "cracked" two player actions before it collapses, and the inner radius-1 disc never crumbles.
+
+The codebase is heavily optimized for low-spec mobile: **GL Compatibility renderer (no glow/SSAO/SSR/GPU-particles — see the design constraints)**, zero-alloc movement generation, shared static GPU resources, signal-based input gating. Preserve the zero-alloc invariants when touching gameplay code.
 
 ## Build & Run
 
@@ -20,16 +22,17 @@ The codebase is still small and heavily optimized for low-spec mobile: **GL Comp
 ## Autoloads (`project.godot` `[autoload]`)
 
 - **`DebugLog`** (`scripts/DebugLog.cs`) — singleton. Installs an `OS.AddLogger` capturing every Godot `print` / `push_error` into a 500-entry ring buffer. Owns the top-right gear button → `SettingsModal` (sliding drawer) → `DebugModal` (full-screen log viewer with copy/clear).
-- **`GameSession`** (`scripts/GameSession.cs`) — single source of truth for cross-screen state. Live run: `SelectedTokenIndex`, `Score`, `Wave`. Persisted meta (via `ConfigFile` at `user://hex.cfg` `[progress]`): `BestWave`, `HighScore`, `TutorialSeen`, `PerTokenBestWave[14]`. Loads on `_Ready`; saves on `CommitRun` (game over), `MarkTutorialSeen`, and app-pause/close `_Notification`.
+- **`GameSession`** (`scripts/GameSession.cs`) — single source of truth for cross-screen state. Owns the live `RunState` (`CurrentRun`, created by `StartNewRun`/`RerollRun`). Persisted meta (via `ConfigFile` at `user://hex.cfg` `[progress]`): `BestBattle`, `HighScore`, `TutorialSeen`. Loads on `_Ready`; saves on `CommitRun` (run end), `MarkTutorialSeen`, and app-pause/close `_Notification`.
 
 ## Architecture
 
 ### Core Game Loop
 
-1. **Init**: `GameScreen._Ready` (root bootstrap) builds the 3D stage *in code* — `WorldEnvironment` (slate `Color` bg, cool flat ambient, Filmic tonemap), warm key + cool fill + central soft `SpotLight3D`, and a tilted perspective `Camera3D` — then constructs `ScreenManager` and hands it the board, camera, session and UI root. `HexBoard._Ready` builds 61 tiles (`Area3D` + `MeshInstance3D` sharing one static `CylinderMesh` + `CylinderShape3D`). `ScreenManager` boots to **Title**.
-2. **Select → run**: `CharacterSelect` previews a piece via `HexBoard.SetToken(idx)` (no hunters); **START** calls `HexBoard.StartRun(idx)` (zero score/wave/combo, spawn wave 1). `SetToken` (preview) and `StartRun` (commit) are distinct entry points.
-3. **First tap** on the token's tile → `BeginSelect()` fills `_movesBuffer`, paints each legal tile gold (move), copper (capture — hunter present), or **red (death tile)**, and pulses them via one shared looped tween. Mercy + telegraph computed here.
-4. **Second tap** on a highlighted tile → `MoveTokenTo(coord)`: commit pos → `TryCapture` (+score/combo, spark burst) → wave-clear short-circuit (bonus + ramp + grace respawn) → else hunters step (`AdvanceEnemies`) with a per-hunter caught check that emits `PlayerCaught` and stops on the first catcher. `ScreenManager` listens to `PlayerCaught`/`ScoreChanged`/`WaveChanged`/`EnemiesChanged`/`ComboChanged`/`BoardSolved`/`ThreatChanged` to drive the HUD and the Title→…→GameOver flow.
+1. **Init**: `GameScreen._Ready` (root bootstrap) builds the 3D stage *in code* — `WorldEnvironment` (slate `Color` bg, cool flat ambient, Filmic tonemap), warm key + cool fill + central soft `SpotLight3D`, and a tilted perspective `Camera3D` — then constructs `ScreenManager` and hands it the board, camera, session and UI root. `HexBoard._Ready` builds 61 tiles (`Area3D` + `MeshInstance3D` sharing one static `CylinderMesh` + `CylinderShape3D`). `ScreenManager` boots to **Title** (board shows a decorative `ShowPreview()` arrangement).
+2. **New Run → battle**: `NewRunScreen` shows the starter army (reroll = `GameSession.RerollRun`); **BEGIN RUN** → `ScreenManager.NextBattle()` → `HexBoard.StartBattle(run)` — sets the active-tile mask from `BattlePlanner.ActiveRadius(battle)`, spawns both armies (player south / enemy north), applies the boss modifier, places tile-upgrade markers, arms the crumble timer.
+3. **Player turn**: tapping a player piece selects it and paints legal moves gold (move), copper (capture) or **red (death tile)**, pulsed by one shared looped tween; the piece glows gold (emissive material). Tapping a highlighted tile moves; tapping a reserve button in the HUD arms deploy mode instead.
+4. **Resolution** (`ExecuteMove` → `AfterPlayerAction`): commit move → capture (money/score/gambit effects/promotion/Bishop Echo) → win check → **one** enemy action (capture > approach > random; Royal Guard / Shield tiles can block) → crumble tick (crack → collapse outer ring) → loss check. `ScreenManager` listens to `MoneyChanged`/`ScoreChanged`/`EnemiesChanged`/`ArmyChanged`/`CrumbleChanged`/`ThreatChanged`/`StatusNote`/`DeployModeChanged`/`BattleWon`/`BattleLost` to drive the HUD and the Title→…→GameOver flow.
+5. **Between battles**: `BattleWon` → `ShopScreen.Present(run)` (2 piece offers, 1 unowned gambit, 1 tile upgrade, paid reroll) → NEXT BATTLE. After battle 12: victory presentation of `GameOverScreen`.
 
 ### Hex Coordinate System
 
@@ -37,27 +40,28 @@ The codebase is still small and heavily optimized for low-spec mobile: **GL Comp
 - **Zero-alloc invariant**: `Within(radius, List<HexCoord> output)` and `Ring(radius, List<HexCoord> output)` are direct-write overloads (the enumerable forms also exist, but hot paths use the buffer overloads). Honor this when adding new range queries.
 - `scripts/Hex/HexLayout.cs` — static `ToWorld(HexCoord, y)`. `TileSize = 0.55f`. Flat-top hex math (√3 × 1.5 spacing).
 
-### Token System
+### Chess Core (`scripts/Chess/`)
 
-- `scripts/Tokens/Token.cs` — abstract partial `Node3D` base. Required overrides per subclass: `Id`, `LegalMoves(from, radius, output)`, `GetSharedMesh()`, `GetSharedMaterial()`.
-- `scripts/Tokens/Tokens.cs` — 14 sealed partial subclasses. Each defines:
-  - A movement rule that fills the caller's `List<HexCoord>` buffer (no per-call allocation).
-  - `static readonly` `SharedMesh` and `SharedMaterial` — every instance of a given token type renders with the same GPU resources.
-- `scripts/Tokens/TokenCatalog.cs` — static `TokenInfo[]` of 14 entries (`Name`, `Description`, `Func<Token> Factory`). The picker UI iterates this without instantiating.
-- `Token.Filter(moves, from, boardRadius)` — in-place two-pointer compaction that strips the origin tile and out-of-bounds entries. Use it in every subclass's `LegalMoves` before returning.
+- `PieceRules.cs` — `PieceKind`/`PieceSide`, the `IBattleQuery` interface, the direction tables (6 rook edge dirs, 6 bishop diagonals, 12 knight leaps — validated in a `#if DEBUG` static ctor), and the single zero-alloc `LegalMoves(kind, side, from, board, output)` generator. `PieceCatalog` holds names/monograms/descriptions/values/prices.
+- `BattlePiece.cs` — plain data class per on-board piece (not a Node; `HexBoard` owns the `MeshInstance3D`). `PieceVisuals`: one `static readonly` mesh per kind + one material per side + gold selected material — shared GPU resources.
+- `Gambit.cs` / `TileUpgrade.cs` — enums + static catalogs (pure data; effects live at the single resolution point in `HexBoard` and are driven by `RunState`).
+- `RunState.cs` — the run record (see overview). `BattlePlanner.cs` — active radius / crumble turns / enemy-army budget / `BossModifier` per battle.
 
-### Board (`scripts/Board/HexBoard.cs`)
+### Board (`scripts/Board/HexBoard.cs`) — battle controller
 
-- Stores tiles in `Dictionary<HexCoord, Tile>` (`Tile` is a nested class with `Coord`, `CheckerIndex` (precomputed `(Q-R)%3`), `Mesh`, `Area3D`, `InputHandler` Callable).
-- 3-color tile palette (`TileMaterialA/B/C`, all `static readonly`). Highlighted tile uses the shared gold emissive material — `MaterialOverride` swap, not material instance.
-- **Selection memoization**: `BeginSelect` returns early if `_lastSelectedToken == _token && _lastSelectedPos == _tokenPos` — tapping the same token twice doesn't rebuild the highlight set.
+- Stores tiles in `Dictionary<HexCoord, Tile>`; `HashSet<HexCoord>` masks for `_active`, `_cracked`, `_locked`; pieces in `List<BattlePiece>` + `Dictionary<HexCoord, BattlePiece> _occupied` (kill honors an identity check because a capturing mover claims the victim's coord first).
+- Implements `IBattleQuery`; `IsDeathTile` swaps in a hypothetical occupancy (`_hypoFrom`/`_hypoTo`) rather than cloning anything.
+- 3-color tile palette + inactive/cracked/locked materials, all `static readonly`; highlights are `MaterialOverride` swaps, never material instances.
+- **Selection memoization**: legal moves + danger flags are recomputed only when the selected piece or the board `_stateStamp` changed.
 - **Per-tile InputEvent Callables** are stored on each `Tile` and explicitly disconnected in `_ExitTree`. New per-tile signal hookups must follow this pattern or they leak on scene exit.
-- `_movesBuffer` is a single `List<HexCoord>` (capacity 64) reused across every selection. Don't allocate a fresh list inside `LegalMoves` callers.
+- `_movesBuffer` / AI + danger scratch lists are single reused buffers. Don't allocate inside movement/AI loops.
 
-### UI (`scripts/UI/GameScreen.cs`)
+### UI (`scripts/UI/`)
 
-- Root `Node3D` for the game scene. `_Ready` builds a vertical `VBoxContainer` of 14 toggle buttons from `TokenCatalog`. Subscribes to `DebugLog.GameplayActiveChanged` and toggles `Viewport.PhysicsObjectPicking` so modal overlays don't pass taps through to the board.
-- All UI is procedural — there's no `.tscn` for the picker.
+- `GameScreen.cs` — root `Node3D` stage bootstrap (camera/lights/environment in code); constructs `ScreenManager`.
+- `ScreenManager.cs` — state machine: Title / NewRun / Playing / Paused / Shop / GameOver. Gates `Viewport.PhysicsObjectPicking` per state (cooperating with the DebugLog modal), owns scrim/vignettes/camera drift/defeat shake. The danger vignette pulses while the board is cracking (`ThreatChanged`).
+- `Hud.cs` — battle chip (battle/enemies/money), score, crumble countdown chip, centre status flourish, pause button, bottom reserve bar (deploy buttons). `NewRunScreen.cs`, `ShopScreen.cs`, `TitleScreen.cs`, `PauseOverlay.cs`, `GameOverScreen.cs` (defeat + victory presentations), `TutorialOverlay.cs`.
+- All UI is procedural (no .tscn) using `UiTheme.cs` palette/Theme/factories/vignette.
 
 ### Debug Overlay
 
@@ -66,30 +70,28 @@ The codebase is still small and heavily optimized for low-spec mobile: **GL Comp
 
 ## Performance Conventions (Hard Rules)
 
-These are the patterns the recent perf audit established. Don't regress them:
-
-1. **Zero-alloc movement**: `LegalMoves` fills the caller's buffer. Never `new List<HexCoord>()` inside a movement rule.
-2. **Shared GPU resources**: tile mesh, tile collision shape, highlight material, and every token's mesh + material are all `static readonly`. Don't instantiate per-tile / per-token.
-3. **Memoized selection**: if you change the selection flow, keep the `(token, pos)` short-circuit in `BeginSelect`.
+1. **Zero-alloc movement**: `PieceRules.LegalMoves` fills the caller's buffer. Never `new List<HexCoord>()` inside movement, AI, or danger-check code.
+2. **Shared GPU resources**: tile mesh, tile collision shape, highlight/inactive/cracked/locked materials, upgrade-marker mesh+materials, and every piece mesh + side material are all `static readonly`. Don't instantiate per-tile / per-piece.
+3. **Memoized selection**: keep the (piece, stateStamp) short-circuit in `Select` if you change the selection flow.
 4. **Signal cleanup**: per-node Callables get disconnected in `_ExitTree`. Add new per-tile signal hookups to the existing pattern, not as anonymous lambdas.
 5. **Diagnostic prints**: wrap `GD.Print` calls in `#if DEBUG` unless they're behind the `DebugLog` overlay (which captures them anyway).
 
 ## Existing Documentation
 
-- `overview.html` — comprehensive HTML reference with file map, token table, hex math notes. Open in a browser; treat as the human-facing readme. (May still reference the removed origin-anchored tokens until refreshed.)
-- `PERFORMANCE_AUDIT.md` — most recent audit; identifies remaining minor opportunities. Scope covers C# gameplay and the GDScript test scaffolding under `android/build/`.
+- `overview.html` — HTML reference with file map and hex math notes. **Stale**: still documents the pre-roguelike token hunt; refresh before trusting it.
+- `PERFORMANCE_AUDIT.md` / `AUDIT.md` — audits of the previous (token hunt) codebase; the conventions they established still apply.
 
 ## Scene & Project Layout
 
 | Path | Contents |
 |------|----------|
 | `scenes/game.tscn` | Single persistent scene — minimal: `GameScreen` (Node3D) + `HexBoard` (Node3D) + `UI` CanvasLayer + `Root` Control. Camera/lights/environment are built in code by `GameScreen`. |
-| `scripts/Board/` | `HexBoard.cs` (tiles, hunters, turn resolution, fail-state, scoring, FX) |
+| `scripts/Board/` | `HexBoard.cs` (battle controller: active tiles, pieces, selection, deploy, enemy AI, crumble, bosses, scoring, FX) |
 | `scripts/Hex/` | `HexCoord.cs`, `HexLayout.cs` |
-| `scripts/Tokens/` | `Token.cs` (base + gold-swap), `Tokens.cs` (14 rules + meshes), `TokenCatalog.cs` |
-| `scripts/UI/` | `GameScreen.cs` (stage bootstrap), `ScreenManager.cs` (state machine), `UiTheme.cs` (palette/Theme/factories/vignette), `Hud.cs`, `TitleScreen.cs`, `CharacterSelect.cs`, `PauseOverlay.cs`, `GameOverScreen.cs`, `TutorialOverlay.cs` |
-| `scripts/` (root) | `DebugLog.cs`, `GameSession.cs` (state + persistence), `Haptics.cs`, `DebugModal.cs`, `SettingsModal.cs` |
+| `scripts/Chess/` | `PieceRules.cs`, `BattlePiece.cs`, `Gambit.cs`, `TileUpgrade.cs`, `RunState.cs`, `BattlePlanner.cs` |
+| `scripts/UI/` | `GameScreen.cs`, `ScreenManager.cs`, `UiTheme.cs`, `Hud.cs`, `TitleScreen.cs`, `NewRunScreen.cs`, `ShopScreen.cs`, `PauseOverlay.cs`, `GameOverScreen.cs`, `TutorialOverlay.cs` |
+| `scripts/` (root) | `DebugLog.cs`, `GameSession.cs` (RunState owner + persistence), `Haptics.cs`, `DebugModal.cs`, `SettingsModal.cs` |
 | `textures/ui/` | `gear.png` (vignette is a code shader, not an asset) |
 | `android/` | Godot Android export template (do not hand-edit) |
 
-**Premium Slate / Compatibility constraints (hard rules for visual work):** the GL Compatibility renderer has NO glow/bloom, SSAO, SSR, ReflectionProbe, SDFGI, volumetric fog, DOF, FXAA/TAA, or reliable GPU particles. The "glow" of the active piece is an **emissive material**; the vignette is a **`canvas_item` shader** ColorRect; capture sparks use **`CpuParticles3D`**; AA is **`msaa_3d`** only (cosmetic — never make readability depend on it). Keep tiles at `RadialSegments = 6` (a hex grid, not a dodecagon).
+**Premium Slate / Compatibility constraints (hard rules for visual work):** the GL Compatibility renderer has NO glow/bloom, SSAO, SSR, ReflectionProbe, SDFGI, volumetric fog, DOF, FXAA/TAA, or reliable GPU particles. The "glow" of the selected piece is an **emissive material**; the vignette is a **`canvas_item` shader** ColorRect; capture sparks use **`CpuParticles3D`**; AA is **`msaa_3d`** only (cosmetic — never make readability depend on it). Keep tiles at `RadialSegments = 6` (a hex grid, not a dodecagon).
