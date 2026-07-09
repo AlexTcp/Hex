@@ -1,123 +1,124 @@
 // =============================================================================
-// HexBoard
+// HexBoard — battle controller
 // =============================================================================
 // Purpose:
-//   Partial Node3D that builds and runs the hexagonal game board: the radius-4
-//   tile grid, the single player Token, and the wave-based hunter system that
-//   gives the game its stakes. Handles tile pick/tap input, computes legal-move
-//   highlights (with per-tile DANGER marking that forewarns the player of any
-//   move that would get them caught), tweens the token, resolves captures,
-//   advances hunters, and detects the lose condition.
+//   Partial Node3D that builds the radius-4 hex board and runs one hex-chess
+//   battle at a time: the ActiveTiles mask (early battles fight on a smaller
+//   area), both armies of BattlePieces, player selection/highlighting with
+//   danger-tile marking, reserve deployment, the one-enemy-acts-per-turn
+//   tactical AI, the crumble timer that cracks and collapses outer rings, boss
+//   modifiers, tile-upgrade effects, Gambit effects, and win/loss detection.
 //
-//   Premium Slate look: brushed-slate tiles, polished-metal/oxblood enemies,
-//   a gold "this is you" base ring + gold selection material on the player
-//   piece, a recoloured landing shockwave, and a pooled CPU-particle capture
-//   burst — all using shared static GPU resources (Compatibility-renderer safe;
-//   no glow/bloom, no GPU particles).
+//   Premium Slate look preserved: brushed-slate tiles, ivory/oxblood alloy
+//   pieces, gold selection glow (emissive material — the only sanctioned
+//   "glow"), pooled landing shockwave + CPU-particle capture burst. All GPU
+//   resources are shared statics (Compatibility renderer; no bloom/GPU
+//   particles).
 //
-// Fail-state & fairness (see the design spec):
-//   - Chase hunters MAY step onto the player's tile -> PlayerCaught -> game over.
-//   - Flee / RandomWalk hunters never target the player (non-lethal flavour).
-//   - A candidate move tile is a DEATH tile iff a non-grace Chase hunter is
-//     adjacent to it (Chase minimises distance-to-player; the player's tile is
-//     distance 0, a strict minimum that no other hunter can block). This is an
-//     exact, zero-alloc Distance==1 test — no RNG, no per-candidate cloning.
-//   - Freshly spawned hunters get a one-turn grace (SpawnedThisWave) so a wave
-//     can never spawn-kill, and wave 1 is all-RandomWalk (un-losable teaching).
-//   - Mercy rule: if EVERY legal move is a death tile, Chase steps are
-//     suppressed for that one resolution so the player always has an out.
+// Fairness:
+//   - A candidate destination is a DEATH tile (painted red) iff some non-
+//     stunned enemy piece could capture it next turn, computed exactly by
+//     re-running the enemy move generator against a hypothetical occupancy
+//     (the mover relocated) — no RNG, no allocation.
+//   - The crumble telegraphs: the doomed ring is painted "cracked" two player
+//     actions before it collapses, and the inner radius-1 disc never crumbles.
 //
 // Interactions:
-//   - HexCoord / HexLayout: tile coords + world placement.
-//   - Token: the active piece; queried via LegalMoves; gold material swap.
-//   - The screen controller listens to PlayerCaught / ScoreChanged / WaveChanged
-//     / EnemiesChanged / ComboChanged / BoardSolved / ThreatChanged to drive the
-//     HUD and Game-Over flow; it calls StartRun (commit) and SetToken (preview).
+//   - PieceRules/IBattleQuery: move generation for selection, AI and danger.
+//   - RunState: mutated live (money, reserve, gambit flags via Has()).
+//   - ScreenManager: calls ShowPreview/StartBattle/BeginDeploy/ClearSelection
+//     and listens to the signals to drive the HUD and screen flow.
 // =============================================================================
 
 using System.Collections.Generic;
 using Godot;
+using HexGame.Chess;
 using HexGame.Hex;
-using HexGame.Tokens;
 
 namespace HexGame.Board;
 
-public partial class HexBoard : Node3D
+public partial class HexBoard : Node3D, IBattleQuery
 {
-    public enum EnemyBehavior { RandomWalk, Flee, Chase }
-
     [Export] public int Radius = 4;
 
-    // Spawn ramp: wave 1 = BaseSpawn, +1 per wave, hard-capped so 61 tiles never choke.
-    private const int BaseSpawn = 3;
-    private const int MaxSpawn = 10;
-
-    private const float TokenY = 0.35f;
+    private const float PieceY = 0.35f;
     private const float RingY = 0.09f;
+    private const int CrackGraceActions = 2;   // player actions between crack and collapse
 
-    [Signal] public delegate void EnemiesChangedEventHandler(int remaining);
-    [Signal] public delegate void BoardSolvedEventHandler();
-    [Signal] public delegate void WaveChangedEventHandler(int wave);
-    [Signal] public delegate void ComboChangedEventHandler(int combo);
+    [Signal] public delegate void MoneyChangedEventHandler(int money);
     [Signal] public delegate void ScoreChangedEventHandler(int score);
-    [Signal] public delegate void PlayerCaughtEventHandler();
+    [Signal] public delegate void EnemiesChangedEventHandler(int remaining);
+    [Signal] public delegate void ArmyChangedEventHandler(int onBoard, int reserve);
+    [Signal] public delegate void CrumbleChangedEventHandler(int turnsLeft, bool cracking);
     [Signal] public delegate void ThreatChangedEventHandler(bool inDanger);
+    [Signal] public delegate void StatusNoteEventHandler(string note);
+    [Signal] public delegate void DeployModeChangedEventHandler(bool active);
+    [Signal] public delegate void BattleWonEventHandler();
+    [Signal] public delegate void BattleLostEventHandler();
 
+    // ----- Board -----------------------------------------------------------
     private readonly Dictionary<HexCoord, Tile> _tiles = new();
-    private Token _token;
-    private HexCoord _tokenPos = HexCoord.Zero;
-    private bool _selected = false;
-    private bool _running = false;            // true only during an active run (not preview)
+    private readonly HashSet<HexCoord> _active = new();
+    private readonly HashSet<HexCoord> _cracked = new();
+    private readonly HashSet<HexCoord> _locked = new();
+
+    // ----- Pieces ----------------------------------------------------------
+    private readonly List<BattlePiece> _pieces = new();
+    private readonly Dictionary<HexCoord, BattlePiece> _occupied = new();
+
+    // ----- Battle state ----------------------------------------------------
+    private RunState _run;
+    private bool _running = false;
+    private int _activeRadius = 4;
+    private int _outerRadius = 4;            // current outermost playable ring
+    private int _crumbleTimer = 0;           // player actions until the next crack
+    private int _crackCountdown = 0;         // actions until the cracked ring collapses
+    private BossModifier _boss = BossModifier.None;
+    private int _lockTurnsLeft = 0;
+    private bool _firstCaptureDone = false;  // Tax Collector
+    private bool _mercyUsed = false;         // Mercy Charter
+    private bool _echoUsed = false;          // Bishop Echo
+    private bool _royalGuardUsed = false;    // Royal Guard
+    private readonly HashSet<HexCoord> _shieldConsumed = new();
+
+    // ----- Selection / deploy ---------------------------------------------
+    private BattlePiece _selPiece;
+    private int _deployIndex = -1;           // >= 0: deploy mode, index into run.Reserve
     private readonly HashSet<HexCoord> _highlighted = new();
     private readonly List<HexCoord> _movesBuffer = new(64);
-    private Token _lastSelectedToken;
-    private HexCoord _lastSelectedPos;
-    private bool _selectionValid = false;
+    private readonly List<bool> _dangerBuffer = new(64);
+    // Selection memoization: recompute legal moves + danger only when the piece
+    // or the board state stamp changed (hard rule 3, adapted to multi-piece).
+    private int _stateStamp = 0;
+    private BattlePiece _cachePiece;
+    private int _cacheStamp = -1;
 
-    // Run state.
-    private int _wave = 1;
-    private int _comboCount = 0;             // consecutive capturing moves
-    private int _score = 0;
-    private bool _mercyThisTurn = false;     // set in BeginSelect, consumed in AdvanceEnemies
-    private bool _inDanger = false;          // last-emitted threat state (ambient HUD cue)
+    // ----- AI / scratch (zero-alloc invariant: pooled, reused) -------------
+    private readonly System.Random _rng = new();
+    private readonly List<HexCoord> _aiMoves = new(64);
+    private readonly List<HexCoord> _dangerScratch = new(64);
+    private readonly List<HexCoord> _coordScratch = new(64);
+    private readonly List<PieceKind> _enemyPlan = new(12);
+    private HexCoord _hypoFrom;              // hypothetical occupancy overlay for
+    private HexCoord _hypoTo;                // danger prediction (IBattleQuery)
+    private bool _hypoActive = false;
 
-    // Selection juice: one looped tween pulses every shared highlight material at once.
+    // ----- FX (pooled) ------------------------------------------------------
     private Tween _pulseTween;
-
-    // Telegraph: pooled ghost markers previewing deterministic (Chase/Flee) hunter steps.
-    private readonly List<MeshInstance3D> _telegraphNodes = new();
-
-    // Landing shockwave ring + gold "this is you" base ring + capture spark burst:
-    // each a single pooled node, re-triggered/repositioned rather than re-allocated.
     private MeshInstance3D _ringNode;
     private Tween _ringTween;
-    private MeshInstance3D _activeRingNode;
+    private MeshInstance3D _selectRingNode;
     private CpuParticles3D _captureParticles;
+    private readonly Dictionary<HexCoord, MeshInstance3D> _upgradeMarkers = new();
+    private bool _threat = false;
 
-    // Reachable-reach overlay: optional faint marking of every BFS-reachable tile.
-    private bool _showReach = false;
-    private readonly HashSet<HexCoord> _reachMarked = new();
-
-    // Hunters. Separate mesh nodes (not tile swaps) so they tween/pop freely.
-    private readonly List<Enemy> _enemies = new();
-    private readonly System.Random _rng = new();
-    private readonly HashSet<HexCoord> _reachable = new();
-    private readonly Queue<HexCoord> _bfsQueue = new();
-    private readonly List<HexCoord> _bfsMoves = new(64);
-    private readonly List<HexCoord> _spawnScratch = new(64);
-    private readonly List<HexCoord> _neighborScratch = new(6);
-    private readonly List<EnemyBehavior> _behaviorScratch = new(MaxSpawn);
-
-    // ----- Premium Slate palette (Compatibility-safe: no glow; emissive only) -----
-    private static readonly Color TileColorA = new(0.165f, 0.180f, 0.212f);   // slate dark
-    private static readonly Color TileColorB = new(0.212f, 0.231f, 0.271f);   // slate mid
-    private static readonly Color TileColorC = new(0.263f, 0.286f, 0.337f);   // slate light
-    private static readonly Color GoldColor = new(0.890f, 0.698f, 0.235f);    // accent gold
-    private static readonly Color GoldRimColor = new(0.957f, 0.824f, 0.478f);
-    private static readonly Color CopperColor = new(0.851f, 0.384f, 0.180f);  // capture
-    private static readonly Color DangerColor = new(0.900f, 0.150f, 0.150f);  // death tile
-    private static readonly Color OxbloodColor = new(0.620f, 0.169f, 0.169f); // hunter
-    private static readonly Color ReachColor = new(0.30f, 0.45f, 0.52f);
+    // ----- Premium Slate palette (Compatibility-safe: emissive only) -------
+    private static readonly Color TileColorA = new(0.165f, 0.180f, 0.212f);
+    private static readonly Color TileColorB = new(0.212f, 0.231f, 0.271f);
+    private static readonly Color TileColorC = new(0.263f, 0.286f, 0.337f);
+    private static readonly Color GoldColor = new(0.890f, 0.698f, 0.235f);
+    private static readonly Color CopperColor = new(0.851f, 0.384f, 0.180f);
+    private static readonly Color DangerColor = new(0.900f, 0.150f, 0.150f);
 
     private static StandardMaterial3D Slate(Color albedo, float roughness) => new()
     {
@@ -134,6 +135,18 @@ public partial class HexBoard : Node3D
     private static readonly StandardMaterial3D TileMaterialB = Slate(TileColorB, 0.58f);
     private static readonly StandardMaterial3D TileMaterialC = Slate(TileColorC, 0.55f);
 
+    // Out-of-battle-area tiles recede into the stage; cracked tiles smoulder;
+    // locked tiles read as cold iron.
+    private static readonly StandardMaterial3D InactiveMaterial = Slate(new Color(0.075f, 0.082f, 0.098f), 0.8f);
+    private static readonly StandardMaterial3D CrackedMaterial = new()
+    {
+        AlbedoColor = new Color(0.32f, 0.14f, 0.11f),
+        Emission = new Color(0.55f, 0.16f, 0.08f) * 0.35f,
+        EmissionEnabled = true,
+        Roughness = 0.7f,
+    };
+    private static readonly StandardMaterial3D LockedMaterial = Slate(new Color(0.15f, 0.19f, 0.30f), 0.35f);
+
     private static StandardMaterial3D Emissive(Color albedo, float emit) => new()
     {
         AlbedoColor = albedo,
@@ -147,45 +160,7 @@ public partial class HexBoard : Node3D
     private static readonly StandardMaterial3D CaptureHighlightMaterialShared = Emissive(CopperColor, 0.7f);
     private static readonly StandardMaterial3D DangerHighlightMaterialShared = Emissive(DangerColor, 0.7f);
 
-    private static readonly StandardMaterial3D ReachMaterialShared = new()
-    {
-        AlbedoColor = ReachColor,
-        Emission = ReachColor * 0.22f,
-        EmissionEnabled = true,
-        Roughness = 0.7f,
-    };
-
-    // The player piece glows gold while a move is being chosen (swapped onto the
-    // token's mesh; restored to its identity metal on deselect).
-    private static readonly StandardMaterial3D SelectedTokenGoldMaterial = new()
-    {
-        AlbedoColor = GoldColor,
-        Metallic = 0.9f,
-        MetallicSpecular = 0.65f,
-        Roughness = 0.22f,
-        RimEnabled = true,
-        Rim = 0.35f,
-        RimTint = 0.6f,
-        Emission = GoldColor * 0.3f,
-        EmissionEnabled = true,
-    };
-
-    // Telegraph marker: small unshaded translucent disc shared by every ghost node.
-    private static readonly Mesh SharedTelegraphMesh = new CylinderMesh
-    {
-        TopRadius = HexLayout.TileSize * 0.4f,
-        BottomRadius = HexLayout.TileSize * 0.4f,
-        Height = 0.04f,
-        RadialSegments = 6,
-    };
-    private static readonly StandardMaterial3D TelegraphMaterialShared = new()
-    {
-        AlbedoColor = new Color(0.85f, 0.3f, 0.25f, 0.4f),
-        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-    };
-
-    // Landing shockwave ring: one thin flat torus, scaled up + faded on each move.
+    // Landing shockwave ring.
     private static readonly Color RingGold = new(0.890f, 0.698f, 0.235f, 0.8f);
     private static readonly Mesh SharedRingMesh = new TorusMesh
     {
@@ -200,14 +175,14 @@ public partial class HexBoard : Node3D
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
     };
 
-    // Gold "this is you" base ring under the active piece (always present in a run).
-    private static readonly Mesh SharedActiveRingMesh = new TorusMesh
+    // Gold ring under the currently selected piece.
+    private static readonly Mesh SharedSelectRingMesh = new TorusMesh
     {
         InnerRadius = HexLayout.TileSize * 0.42f,
         OuterRadius = HexLayout.TileSize * 0.5f,
         RingSegments = 6,
     };
-    private static readonly StandardMaterial3D ActiveRingMaterialShared = new()
+    private static readonly StandardMaterial3D SelectRingMaterialShared = new()
     {
         AlbedoColor = new Color(0.890f, 0.698f, 0.235f, 0.9f),
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
@@ -223,6 +198,22 @@ public partial class HexBoard : Node3D
         EmissionEnabled = true,
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+    };
+
+    // Tile-upgrade marker discs: one shared mesh, one shared material per kind.
+    private static readonly Mesh SharedMarkerMesh = new CylinderMesh
+    {
+        TopRadius = HexLayout.TileSize * 0.32f,
+        BottomRadius = HexLayout.TileSize * 0.32f,
+        Height = 0.03f,
+        RadialSegments = 6,
+    };
+    private static readonly StandardMaterial3D[] MarkerMaterials =
+    {
+        Emissive(new Color(0.890f, 0.698f, 0.235f), 0.35f),   // Gold
+        Emissive(new Color(0.35f, 0.55f, 0.85f), 0.35f),      // Shield
+        Emissive(new Color(0.62f, 0.35f, 0.75f), 0.35f),      // Snare
+        Emissive(new Color(0.31f, 0.70f, 0.53f), 0.35f),      // Blessed
     };
 
     private static readonly StandardMaterial3D[] TileMaterialsByChecker =
@@ -245,27 +236,6 @@ public partial class HexBoard : Node3D
         Height = 0.15f,
     };
 
-    // Every hunter shares one mesh + one oxblood polished-metal material.
-    private static readonly Mesh SharedEnemyMesh = new SphereMesh { Radius = 0.2f, Height = 0.4f };
-    private static readonly StandardMaterial3D EnemyMaterial = new()
-    {
-        AlbedoColor = OxbloodColor,
-        Metallic = 0.7f,
-        MetallicSpecular = 0.5f,
-        Roughness = 0.38f,
-        RimEnabled = true,
-        Rim = 0.3f,
-        RimTint = 0.4f,
-    };
-
-    private sealed class Enemy
-    {
-        public HexCoord Coord;
-        public MeshInstance3D Node;
-        public EnemyBehavior Behavior;
-        public bool SpawnedThisWave;
-    }
-
     private sealed class Tile
     {
         public HexCoord Coord;
@@ -284,84 +254,6 @@ public partial class HexBoard : Node3D
 #endif
     }
 
-    public override void _Input(InputEvent @event)
-    {
-#if DEBUG
-        if (@event is InputEventScreenTouch st)
-        {
-            var vp = GetViewport();
-            GD.Print($"[DIAG-IN] touch pressed={st.Pressed} idx={st.Index} pos={st.Position} picking={vp?.PhysicsObjectPicking} tiles={_tiles.Count}");
-        }
-        else if (@event is InputEventMouseButton mb)
-        {
-            var vp = GetViewport();
-            GD.Print($"[DIAG-IN] mouse pressed={mb.Pressed} btn={mb.ButtonIndex} pos={mb.Position} picking={vp?.PhysicsObjectPicking}");
-        }
-#endif
-    }
-
-    // ----- Run lifecycle -------------------------------------------------
-
-    // PREVIEW: show a piece on the board with no hunters and no active run
-    // (used behind the Character-Select screen). Distinct from StartRun.
-    public void SetToken(int index)
-    {
-        _running = false;
-        ClearHighlights();
-        ClearEnemies();
-        _selected = false;
-        _selectionValid = false;
-        _lastSelectedToken = null;
-        _tokenPos = HexCoord.Zero;
-        EquipToken(index);
-        UpdateThreat();
-        EmitSignal(SignalName.EnemiesChanged, 0);
-    }
-
-    // COMMIT: begin a fresh run with the chosen piece — zero score/wave/combo,
-    // spawn wave 1 (all-RandomWalk, grace), and emit the starting HUD values.
-    public void StartRun(int index)
-    {
-        _running = true;
-        ClearHighlights();
-        ClearEnemies();
-        _selected = false;
-        _selectionValid = false;
-        _lastSelectedToken = null;
-        _tokenPos = HexCoord.Zero;
-        _wave = 1;
-        _comboCount = 0;
-        _score = 0;
-        _mercyThisTurn = false;
-        EquipToken(index);
-        EmitSignal(SignalName.WaveChanged, _wave);
-        EmitSignal(SignalName.ScoreChanged, _score);
-        SpawnWave(_wave);
-    }
-
-    private void EquipToken(int index)
-    {
-        if (_token != null)
-        {
-            _token.SetProcessInput(false);
-            _token.SetProcessUnhandledInput(false);
-            _token.ProcessMode = ProcessModeEnum.Disabled;
-            _token.QueueFree();
-            _token = null;
-        }
-
-        if (index < 0 || index >= TokenCatalog.All.Length)
-        {
-            HideActiveRing();
-            return;
-        }
-
-        _token = TokenCatalog.All[index].Factory();
-        AddChild(_token);
-        _token.Position = HexLayout.ToWorld(_tokenPos, TokenY);
-        PositionActiveRing(_tokenPos);
-    }
-
     private void BuildBoard()
     {
         var coords = new List<HexCoord>(1 + 3 * Radius * (Radius + 1));
@@ -371,6 +263,7 @@ public partial class HexBoard : Node3D
             var h = coords[i];
             var tile = BuildTile(h);
             _tiles[h] = tile;
+            _active.Add(h);
             AddChild(tile.Area);
         }
     }
@@ -410,12 +303,221 @@ public partial class HexBoard : Node3D
                 tile.Area.Disconnect(Area3D.SignalName.InputEvent, tile.InputHandler);
         }
 
-        // Kill animation tweens and reset the shared materials we mutate — static
-        // resources persist across scene reloads in the same process.
+        // Kill tweens and reset shared materials we mutate — static resources
+        // persist across scene reloads in the same process.
         _ringTween?.Kill();
         StopHighlightPulse();
         RingMaterialShared.AlbedoColor = RingGold;
     }
+
+    // ----- IBattleQuery ----------------------------------------------------
+
+    public bool IsPlayable(HexCoord c) =>
+        _active.Contains(c) && !_locked.Contains(c);
+
+    public PieceSide? OccupantSide(HexCoord c)
+    {
+        if (_hypoActive)
+        {
+            if (c == _hypoTo) return PieceSide.Player;      // mover relocated here
+            if (c == _hypoFrom) return null;                // ...vacating its origin
+        }
+        return _occupied.TryGetValue(c, out var p) ? p.Side : null;
+    }
+
+    // ----- Battle lifecycle --------------------------------------------------
+
+    // Decorative arrangement behind the Title screen: full board, a few pieces,
+    // no run, no input response (_running stays false).
+    public void ShowPreview()
+    {
+        _running = false;
+        _run = null;
+        ResetBattleState(Radius);
+        SpawnPiece(PieceKind.King, PieceSide.Player, new HexCoord(0, 3));
+        SpawnPiece(PieceKind.Rook, PieceSide.Player, new HexCoord(-2, 3));
+        SpawnPiece(PieceKind.Knight, PieceSide.Player, new HexCoord(2, 1));
+        SpawnPiece(PieceKind.Bishop, PieceSide.Player, new HexCoord(1, 2));
+        SpawnPiece(PieceKind.Pawn, PieceSide.Enemy, new HexCoord(0, -2));
+        SpawnPiece(PieceKind.Pawn, PieceSide.Enemy, new HexCoord(-1, -1));
+        SpawnPiece(PieceKind.Queen, PieceSide.Enemy, new HexCoord(1, -3));
+        SpawnPiece(PieceKind.Knight, PieceSide.Enemy, new HexCoord(-2, -1));
+    }
+
+    public void StartBattle(RunState run)
+    {
+        _run = run;
+        _running = true;
+        int battle = run.Battle;
+        _boss = BattlePlanner.BossFor(battle);
+        ResetBattleState(BattlePlanner.ActiveRadius(battle));
+        _crumbleTimer = BattlePlanner.CrumbleTurns(battle, run, _boss);
+
+        SpawnPlayerArmy();
+        SpawnEnemyArmy(battle);
+        if (_boss == BossModifier.Lockmaker) ApplyLockmaker();
+        PlaceUpgradeMarkers();
+        RefreshAllTileVisuals();
+
+        EmitSignal(SignalName.MoneyChanged, run.Money);
+        EmitSignal(SignalName.ScoreChanged, run.Score);
+        EmitSignal(SignalName.CrumbleChanged, _crumbleTimer, false);
+        EmitArmyCounts();
+        EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
+        SetThreat(false);
+    }
+
+    private void ResetBattleState(int activeRadius)
+    {
+        EndSelect();
+        CancelDeploy();
+        ClearPieces();
+        _cracked.Clear();
+        _locked.Clear();
+        _shieldConsumed.Clear();
+        _activeRadius = activeRadius;
+        _outerRadius = activeRadius;
+        _crackCountdown = 0;
+        _crumbleTimer = 0;
+        _lockTurnsLeft = 0;
+        _firstCaptureDone = false;
+        _mercyUsed = false;
+        _echoUsed = false;
+        _royalGuardUsed = false;
+        _stateStamp++;
+        _cacheStamp = -1;
+
+        _active.Clear();
+        foreach (var kv in _tiles)
+            if (kv.Key.DistanceFromOrigin() <= activeRadius) _active.Add(kv.Key);
+
+        foreach (var kv in _upgradeMarkers)
+            if (IsInstanceValid(kv.Value)) kv.Value.Visible = false;
+
+        RefreshAllTileVisuals();
+        SetThreat(false);
+    }
+
+    // Player army fills the southernmost active tiles (positive R — pawns push
+    // toward the enemy at negative R). Overflow beyond the home rows moves to
+    // the reserve so no piece is silently lost.
+    private void SpawnPlayerArmy()
+    {
+        _coordScratch.Clear();
+        foreach (var c in _active) _coordScratch.Add(c);
+        _coordScratch.Sort((a, b) => b.R != a.R ? b.R.CompareTo(a.R) : System.Math.Abs(a.Q).CompareTo(System.Math.Abs(b.Q)));
+
+        int placed = 0;
+        for (int i = 0; i < _coordScratch.Count && placed < _run.Army.Count; i++)
+        {
+            var c = _coordScratch[i];
+            if (c.R < 1) break;                       // home rows only
+            if (_occupied.ContainsKey(c)) continue;
+            SpawnPiece(_run.Army[placed], PieceSide.Player, c);
+            placed++;
+        }
+        // Anything that didn't fit waits in the reserve.
+        for (int i = _run.Army.Count - 1; i >= placed; i--)
+        {
+            _run.Reserve.Add(_run.Army[i]);
+            _run.Army.RemoveAt(i);
+        }
+    }
+
+    private void SpawnEnemyArmy(int battle)
+    {
+        BattlePlanner.FillEnemyArmy(battle, _rng, _enemyPlan);
+        _coordScratch.Clear();
+        foreach (var c in _active) _coordScratch.Add(c);
+        _coordScratch.Sort((a, b) => a.R != b.R ? a.R.CompareTo(b.R) : System.Math.Abs(a.Q).CompareTo(System.Math.Abs(b.Q)));
+
+        int placed = 0;
+        for (int i = 0; i < _coordScratch.Count && placed < _enemyPlan.Count; i++)
+        {
+            var c = _coordScratch[i];
+            if (c.R > -1) break;                      // enemy rows only
+            if (_occupied.ContainsKey(c)) continue;
+            SpawnPiece(_enemyPlan[placed], PieceSide.Enemy, c);
+            placed++;
+        }
+    }
+
+    private void ApplyLockmaker()
+    {
+        _coordScratch.Clear();
+        foreach (var c in _active)
+            if (!_occupied.ContainsKey(c)) _coordScratch.Add(c);
+        for (int n = 0; n < 3 && _coordScratch.Count > 0; n++)
+        {
+            int idx = _rng.Next(_coordScratch.Count);
+            _locked.Add(_coordScratch[idx]);
+            _coordScratch[idx] = _coordScratch[_coordScratch.Count - 1];
+            _coordScratch.RemoveAt(_coordScratch.Count - 1);
+        }
+        _lockTurnsLeft = 2;
+    }
+
+    private void PlaceUpgradeMarkers()
+    {
+        if (_run == null) return;
+        foreach (var kv in _run.TileUpgrades)
+        {
+            if (!_tiles.ContainsKey(kv.Key)) continue;
+            if (!_upgradeMarkers.TryGetValue(kv.Key, out var node) || !IsInstanceValid(node))
+            {
+                node = new MeshInstance3D { Mesh = SharedMarkerMesh };
+                node.Position = HexLayout.ToWorld(kv.Key, 0.085f);
+                AddChild(node);
+                _upgradeMarkers[kv.Key] = node;
+            }
+            node.MaterialOverride = MarkerMaterials[(int)kv.Value];
+            node.Visible = _active.Contains(kv.Key);
+        }
+    }
+
+    private void SpawnPiece(PieceKind kind, PieceSide side, HexCoord coord)
+    {
+        var mesh = new MeshInstance3D
+        {
+            Mesh = PieceVisuals.MeshFor(kind),
+            MaterialOverride = PieceVisuals.MaterialFor(side),
+            Position = HexLayout.ToWorld(coord, PieceY),
+            Scale = Vector3.Zero,
+        };
+        AddChild(mesh);
+        var piece = new BattlePiece { Kind = kind, Side = side, Coord = coord, Node = mesh };
+        _pieces.Add(piece);
+        _occupied[coord] = piece;
+
+        var spawn = CreateTween();
+        spawn.TweenProperty(mesh, "scale", Vector3.One, 0.18f)
+            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+    }
+
+    private void ClearPieces()
+    {
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var node = _pieces[i].Node;
+            if (node != null && IsInstanceValid(node)) node.QueueFree();
+        }
+        _pieces.Clear();
+        _occupied.Clear();
+        _selPiece = null;
+    }
+
+    private int CountSide(PieceSide side)
+    {
+        int n = 0;
+        for (int i = 0; i < _pieces.Count; i++)
+            if (_pieces[i].Alive && _pieces[i].Side == side) n++;
+        return n;
+    }
+
+    private void EmitArmyCounts() =>
+        EmitSignal(SignalName.ArmyChanged, CountSide(PieceSide.Player), _run?.Reserve.Count ?? 0);
+
+    // ----- Input -------------------------------------------------------------
 
     private void OnTileInput(HexCoord coord, InputEvent e)
     {
@@ -430,26 +532,27 @@ public partial class HexBoard : Node3D
 
     private void OnTileTapped(HexCoord coord)
     {
-        if (_token == null || !_running) return;
+        if (!_running) return;
 
-        if (!_selected)
+        if (_deployIndex >= 0)
         {
-            if (coord == _tokenPos) BeginSelect();
+            if (_highlighted.Contains(coord)) ExecuteDeploy(coord);
+            else CancelDeploy();
             return;
         }
 
-        // Re-tapping the token's own tile cancels the selection cleanly.
-        if (coord == _tokenPos)
+        if (_occupied.TryGetValue(coord, out var piece) && piece.Side == PieceSide.Player)
         {
-            EndSelect();
-            Haptics.Tap(8);
+            if (_selPiece == piece) { EndSelect(); Haptics.Tap(8); }
+            else Select(piece);
             return;
         }
 
-        if (_highlighted.Contains(coord))
+        if (_selPiece != null && _highlighted.Contains(coord))
         {
-            MoveTokenTo(coord);
+            var mover = _selPiece;
             EndSelect();
+            ExecuteMove(mover, coord);
         }
         else
         {
@@ -457,113 +560,95 @@ public partial class HexBoard : Node3D
         }
     }
 
-    // ----- Selection: highlights + death-tile marking + mercy ------------
+    // ----- Selection ---------------------------------------------------------
 
-    private void BeginSelect()
+    private void Select(BattlePiece piece)
     {
-        if (_selectionValid && _lastSelectedToken == _token && _lastSelectedPos == _tokenPos)
+        EndSelect();
+        _selPiece = piece;
+
+        // Memoized: reuse the last computed move/danger set when neither the
+        // piece nor the board state stamp changed.
+        if (_cachePiece != piece || _cacheStamp != _stateStamp)
         {
-            _selected = true;
-            _token.SetActiveMaterial(SelectedTokenGoldMaterial);
-            StartHighlightPulse();
-            ShowTelegraph();
-            return;
+            PieceRules.LegalMoves(piece.Kind, PieceSide.Player, piece.Coord, this, _movesBuffer);
+            _dangerBuffer.Clear();
+            for (int i = 0; i < _movesBuffer.Count; i++)
+                _dangerBuffer.Add(IsDeathTile(piece, _movesBuffer[i]));
+            _cachePiece = piece;
+            _cacheStamp = _stateStamp;
         }
 
-        _selected = true;
-        _highlighted.Clear();
-        _token.LegalMoves(_tokenPos, Radius, _movesBuffer);
-
-        int danger = 0;
         for (int i = 0; i < _movesBuffer.Count; i++)
         {
             var dest = _movesBuffer[i];
             if (!_tiles.TryGetValue(dest, out var tile)) continue;
             _highlighted.Add(dest);
 
-            // Priority: DANGER (you die here) > CAPTURE (enemy here) > normal move.
-            // Danger wins so the fairness cue is never hidden behind a capture colour.
-            if (IsDeathTile(dest))
-            {
+            // Priority: DANGER (you lose this piece here) > CAPTURE > move —
+            // the fairness cue is never hidden behind a capture colour.
+            if (_dangerBuffer[i])
                 tile.Mesh.MaterialOverride = DangerHighlightMaterialShared;
-                danger++;
-            }
-            else if (HasEnemyAt(dest))
-            {
+            else if (_occupied.TryGetValue(dest, out var occ) && occ.Side == PieceSide.Enemy)
                 tile.Mesh.MaterialOverride = CaptureHighlightMaterialShared;
-            }
             else
-            {
                 tile.Mesh.MaterialOverride = HighlightMaterialShared;
-            }
         }
 
-        // Mercy: if every legal move would get the player caught, suppress Chase
-        // steps for the upcoming resolution so there is always a survivable turn.
-        _mercyThisTurn = _highlighted.Count > 0 && danger == _highlighted.Count;
-
-        _lastSelectedToken = _token;
-        _lastSelectedPos = _tokenPos;
-        _selectionValid = true;
-
-        _token.SetActiveMaterial(SelectedTokenGoldMaterial);
+        piece.Node.MaterialOverride = PieceVisuals.SelectedMaterial;
+        PositionSelectRing(piece.Coord);
         StartHighlightPulse();
-        ShowTelegraph();
     }
 
     private void EndSelect()
     {
+        if (_selPiece != null && IsInstanceValid(_selPiece.Node))
+            _selPiece.Node.MaterialOverride = PieceVisuals.MaterialFor(_selPiece.Side);
+        _selPiece = null;
+        HideSelectRing();
         ClearHighlights();
-        _selected = false;
-        _token?.RestoreMaterial();
     }
 
-    // Public hook for the screen flow (e.g. Pause) to drop any in-progress
-    // selection so its highlights / pulse / telegraph don't persist behind a menu.
+    // Public hook for the screen flow (e.g. Pause) so highlights/pulse don't
+    // persist behind a menu.
     public void ClearSelection()
     {
-        if (_selected) EndSelect();
+        EndSelect();
+        CancelDeploy();
     }
 
     private void ClearHighlights()
     {
         StopHighlightPulse();
-        HideTelegraph();
-        foreach (var h in _highlighted)
-            if (_tiles.TryGetValue(h, out var t))
-                t.Mesh.MaterialOverride = t.BaseMaterial;
+        foreach (var h in _highlighted) RefreshTileVisual(h);
         _highlighted.Clear();
-        _selectionValid = false;
-        RefreshReachOverlay();
     }
 
-    private bool HasEnemyAt(HexCoord coord)
+    // Exact danger test: could any non-stunned enemy capture `dest` next turn,
+    // with `piece` hypothetically relocated there? Zero-alloc (pooled scratch),
+    // no RNG — the AI always takes an available capture.
+    private bool IsDeathTile(BattlePiece piece, HexCoord dest)
     {
-        for (int i = 0; i < _enemies.Count; i++)
-            if (_enemies[i].Coord == coord) return true;
-        return false;
-    }
-
-    // A tile is lethal iff a non-grace Chase hunter sits adjacent to it: Chase
-    // minimises distance to the player, and a step onto the player (the tile,
-    // hypothetically occupied by the player) is distance 0 — a strict minimum no
-    // other hunter can block. Exact, zero-alloc, no RNG. The hunter currently ON
-    // the tile is excluded (it gets captured on landing).
-    private bool IsDeathTile(HexCoord cand)
-    {
-        for (int i = 0; i < _enemies.Count; i++)
+        _hypoFrom = piece.Coord;
+        _hypoTo = dest;
+        _hypoActive = true;
+        bool danger = false;
+        for (int i = 0; i < _pieces.Count && !danger; i++)
         {
-            var e = _enemies[i];
-            if (e.Behavior != EnemyBehavior.Chase) continue;
-            if (e.SpawnedThisWave) continue;        // grace turn: won't step next move
-            if (e.Coord == cand) continue;          // captured on landing — not a threat
-            if (e.Coord.Distance(cand) == 1) return true;
+            var e = _pieces[i];
+            if (!e.Alive || e.Side != PieceSide.Enemy) continue;
+            if (e.StunTurns > 0) continue;             // can't act next turn
+            if (e.Coord == dest) continue;             // captured on landing
+            PieceRules.LegalMoves(e.Kind, PieceSide.Enemy, e.Coord, this, _dangerScratch);
+            for (int m = 0; m < _dangerScratch.Count; m++)
+                if (_dangerScratch[m] == dest) { danger = true; break; }
         }
-        return false;
+        _hypoActive = false;
+        return danger;
     }
 
-    // One looped tween drives the emission of all three highlight materials, so
-    // every highlighted tile pulses in sync at zero per-tile cost.
+    // One looped tween drives the emission of all three highlight materials in
+    // sync at zero per-tile cost.
     private void StartHighlightPulse()
     {
         _pulseTween?.Kill();
@@ -591,134 +676,488 @@ public partial class HexBoard : Node3D
         DangerHighlightMaterialShared.EmissionEnergyMultiplier = 1f;
     }
 
-    private MeshInstance3D GetTelegraphNode(int index)
+    // ----- Deploy ------------------------------------------------------------
+
+    // Enter deploy mode for run.Reserve[reserveIndex]: highlight the legal
+    // deploy tiles (empty playable home-half tiles; any empty tile as a
+    // fallback). Deploying costs the player's action.
+    public void BeginDeploy(int reserveIndex)
     {
-        while (index >= _telegraphNodes.Count)
+        if (!_running || _run == null) return;
+        if (reserveIndex < 0 || reserveIndex >= _run.Reserve.Count) return;
+        EndSelect();
+        CancelDeploy();
+        _deployIndex = reserveIndex;
+
+        int found = 0;
+        for (int pass = 0; pass < 2 && found == 0; pass++)
         {
-            var node = new MeshInstance3D
+            foreach (var c in _active)
             {
-                Mesh = SharedTelegraphMesh,
-                MaterialOverride = TelegraphMaterialShared,
-                Visible = false,
-            };
-            AddChild(node);
-            _telegraphNodes.Add(node);
+                if (!IsPlayable(c) || _occupied.ContainsKey(c)) continue;
+                if (pass == 0 && c.R < 1) continue;    // prefer the home half
+                _highlighted.Add(c);
+                if (_tiles.TryGetValue(c, out var tile))
+                    tile.Mesh.MaterialOverride = HighlightMaterialShared;
+                found++;
+            }
         }
-        return _telegraphNodes[index];
+        if (found == 0)
+        {
+            // Nowhere to deploy: report the mode ended so the HUD disarms.
+            _deployIndex = -1;
+            EmitSignal(SignalName.DeployModeChanged, false);
+            return;
+        }
+        StartHighlightPulse();
+        EmitSignal(SignalName.DeployModeChanged, true);
     }
 
-    // Ghost markers preview where each DETERMINISTIC (Chase/Flee) hunter intends
-    // to step from its current tile. RandomWalk hunters are skipped (showing them
-    // would both mislead and consume the RNG that drives the real step).
-    private void ShowTelegraph()
+    public void CancelDeploy()
     {
-        HideTelegraph();
-        int used = 0;
-        for (int i = 0; i < _enemies.Count; i++)
+        if (_deployIndex < 0) return;
+        _deployIndex = -1;
+        ClearHighlights();
+        EmitSignal(SignalName.DeployModeChanged, false);
+    }
+
+    private void ExecuteDeploy(HexCoord coord)
+    {
+        int idx = _deployIndex;
+        CancelDeploy();
+        if (idx < 0 || idx >= _run.Reserve.Count) return;
+
+        var kind = _run.Reserve[idx];
+        _run.Reserve.RemoveAt(idx);
+        SpawnPiece(kind, PieceSide.Player, coord);
+        PlayLandingRing(coord, false);
+        Haptics.Tap(15);
+
+        if (_run.TileUpgrades.TryGetValue(coord, out var up) && up == TileUpgradeKind.Blessed)
         {
-            var e = _enemies[i];
-            if (e.Behavior == EnemyBehavior.RandomWalk) continue;
-            if (e.SpawnedThisWave) continue;       // won't move next turn
-            var step = PredictEnemyStep(i, _tokenPos, mercy: false);
-            if (step == e.Coord) continue;         // boxed in: nothing to show
-            var node = GetTelegraphNode(used++);
-            node.Position = HexLayout.ToWorld(step, 0.12f);
-            node.Visible = true;
+            AddMoney(1);
+            EmitSignal(SignalName.StatusNote, "BLESSED +1");
+        }
+
+        EmitArmyCounts();
+        AfterPlayerAction();
+    }
+
+    // ----- Player move resolution ---------------------------------------------
+
+    private void ExecuteMove(BattlePiece mover, HexCoord dest)
+    {
+        var from = mover.Coord;
+        MovePieceTo(mover, dest, tween: true);
+        _cacheStamp = -1;
+
+        bool captured = TryCapturePlayerMove(mover, from, dest);
+        PlayLandingRing(dest, captured);
+        Haptics.Tap(captured ? 40 : 15);
+
+        if (CheckBattleEnd()) return;
+        AfterPlayerAction();
+    }
+
+    private void MovePieceTo(BattlePiece piece, HexCoord dest, bool tween)
+    {
+        _occupied.Remove(piece.Coord);
+        piece.Coord = dest;
+        _occupied[dest] = piece;
+        if (piece.Node == null || !IsInstanceValid(piece.Node)) return;
+
+        var target = HexLayout.ToWorld(dest, PieceY);
+        if (!tween) { piece.Node.Position = target; return; }
+
+        var move = CreateTween();
+        move.TweenProperty(piece.Node, "position", target, 0.18f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+
+        var squash = CreateTween();
+        squash.TweenProperty(piece.Node, "scale", new Vector3(1.12f, 0.85f, 1.12f), 0.09f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        squash.TweenProperty(piece.Node, "scale", Vector3.One, 0.09f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+    }
+
+    // Note: the mover has already been placed on dest, so the captured piece is
+    // looked up from the pieces list, not the occupancy map.
+    private bool TryCapturePlayerMove(BattlePiece mover, HexCoord from, HexCoord dest)
+    {
+        BattlePiece target = null;
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var p = _pieces[i];
+            if (p.Alive && p != mover && p.Side == PieceSide.Enemy && p.Coord == dest) { target = p; break; }
+        }
+        if (target == null) return false;
+
+        // Money: base value, Tax Collector's first-capture levy, tile bonuses,
+        // Gambit dividends — all data-driven from the run.
+        int money = PieceCatalog.ValueOf(target.Kind);
+        if (_boss == BossModifier.TaxCollector && !_firstCaptureDone) money = 0;
+        _firstCaptureDone = true;
+        if (_run.TileUpgrades.TryGetValue(dest, out var up) && up == TileUpgradeKind.Gold)
+        {
+            money += 2;
+            if (_run.Has(GambitKind.GoldenHarvest)) money += 2;
+        }
+        if (_boss == BossModifier.CrumbleCrown && _cracked.Contains(dest)) money += 2;
+        if (mover.Kind == PieceKind.Rook && _run.Has(GambitKind.RookDividend)) money += 2;
+
+        AddMoney(money);
+        AddScore(PieceCatalog.ValueOf(target.Kind) * 100);
+        KillPiece(target, playerLossCounts: false);
+        PlayCaptureBurst(dest);
+
+        // Knight Fork: stun every enemy adjacent to the landing hex.
+        if (mover.Kind == PieceKind.Knight && _run.Has(GambitKind.KnightFork))
+        {
+            int stunned = 0;
+            for (int i = 0; i < _pieces.Count; i++)
+            {
+                var p = _pieces[i];
+                if (p.Alive && p.Side == PieceSide.Enemy && p.Coord.Distance(dest) == 1)
+                {
+                    p.StunTurns = 1;
+                    stunned++;
+                }
+            }
+            if (stunned > 0) EmitSignal(SignalName.StatusNote, "FORKED");
+        }
+
+        // Pawn promotion: capturing on the outer active ring upgrades the pawn.
+        if (mover.Kind == PieceKind.Pawn && dest.DistanceFromOrigin() == _outerRadius)
+            PromotePawn(mover);
+
+        // Bishop Echo: once per battle, keep sliding one step past the capture.
+        if (mover.Kind == PieceKind.Bishop && _run.Has(GambitKind.BishopEcho) && !_echoUsed)
+            TryBishopEcho(mover, from, dest);
+
+        EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
+        return true;
+    }
+
+    private void PromotePawn(BattlePiece pawn)
+    {
+        PieceKind[] options = { PieceKind.Knight, PieceKind.Rook, PieceKind.Bishop };
+        pawn.Kind = options[_rng.Next(options.Length)];
+        if (IsInstanceValid(pawn.Node)) pawn.Node.Mesh = PieceVisuals.MeshFor(pawn.Kind);
+        EmitSignal(SignalName.StatusNote, $"PROMOTED: {PieceCatalog.NameOf(pawn.Kind).ToUpperInvariant()}");
+        if (_run.Has(GambitKind.PawnAmbition)) AddMoney(3);
+    }
+
+    private void TryBishopEcho(BattlePiece bishop, HexCoord from, HexCoord dest)
+    {
+        var delta = dest - from;
+        foreach (var d in PieceRules.BishopDirs)
+        {
+            // delta must be a positive multiple of exactly one bishop diagonal.
+            if (d.Q * delta.R != d.R * delta.Q) continue;
+            bool positive = (d.Q != 0) ? (delta.Q / d.Q) > 0 : (delta.R / d.R) > 0;
+            if (!positive) continue;
+
+            var next = dest + d;
+            if (!IsPlayable(next) || _occupied.ContainsKey(next)) return;
+            _echoUsed = true;
+            MovePieceTo(bishop, next, tween: true);
+            EmitSignal(SignalName.StatusNote, "ECHO STEP");
+            return;
         }
     }
 
-    private void HideTelegraph()
+    // ----- Turn advance: enemy action + crumble + lock timers ----------------
+
+    private void AfterPlayerAction()
     {
-        for (int i = 0; i < _telegraphNodes.Count; i++)
-            if (IsInstanceValid(_telegraphNodes[i]))
-                _telegraphNodes[i].Visible = false;
-    }
+        _stateStamp++;
+        _cacheStamp = -1;
 
-    public void SetShowReach(bool show)
-    {
-        _showReach = show;
-        RefreshReachOverlay();
-    }
-
-    private void RefreshReachOverlay()
-    {
-        foreach (var c in _reachMarked)
-            if (!_highlighted.Contains(c) && _tiles.TryGetValue(c, out var t))
-                t.Mesh.MaterialOverride = t.BaseMaterial;
-        _reachMarked.Clear();
-
-        if (!_showReach || _token == null) return;
-
-        ComputeReachable(_tokenPos);
-        foreach (var c in _reachable)
+        if (_lockTurnsLeft > 0 && --_lockTurnsLeft == 0)
         {
-            if (_highlighted.Contains(c)) continue;
-            if (!_tiles.TryGetValue(c, out var t)) continue;
-            t.Mesh.MaterialOverride = ReachMaterialShared;
-            _reachMarked.Add(c);
+            _locked.Clear();
+            RefreshAllTileVisuals();
+        }
+
+        EnemyAct();
+        if (CheckBattleEnd()) return;
+
+        TickCrumble();
+        if (CheckBattleEnd()) return;
+
+        EmitArmyCounts();
+    }
+
+    // Exactly one enemy piece acts per player action (chess-like alternation):
+    // take the highest-value capture if any exists, otherwise the move that
+    // most closes on the nearest player piece, otherwise a random legal move.
+    private void EnemyAct()
+    {
+        BattlePiece bestCapPiece = null; HexCoord bestCapDest = default; int bestCapValue = -1;
+        BattlePiece bestAppPiece = null; HexCoord bestAppDest = default; int bestAppDist = int.MaxValue;
+        BattlePiece anyPiece = null; HexCoord anyDest = default; int anyCount = 0;
+
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var e = _pieces[i];
+            if (!e.Alive || e.Side != PieceSide.Enemy) continue;
+            if (e.StunTurns > 0) continue;
+
+            PieceRules.LegalMoves(e.Kind, PieceSide.Enemy, e.Coord, this, _aiMoves);
+            for (int m = 0; m < _aiMoves.Count; m++)
+            {
+                var dest = _aiMoves[m];
+
+                if (_occupied.TryGetValue(dest, out var victim) && victim.Side == PieceSide.Player)
+                {
+                    int v = PieceCatalog.ValueOf(victim.Kind);
+                    if (v > bestCapValue) { bestCapValue = v; bestCapPiece = e; bestCapDest = dest; }
+                    continue;
+                }
+
+                int dist = DistanceToNearestPlayer(dest);
+                if (dist < bestAppDist) { bestAppDist = dist; bestAppPiece = e; bestAppDest = dest; }
+
+                // Reservoir sample one uniformly random legal move as fallback.
+                anyCount++;
+                if (_rng.Next(anyCount) == 0) { anyPiece = e; anyDest = dest; }
+            }
+        }
+
+        // Recover stunned enemies: they sat this turn out.
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var e = _pieces[i];
+            if (e.Alive && e.Side == PieceSide.Enemy && e.StunTurns > 0) e.StunTurns--;
+        }
+
+        if (bestCapPiece != null) { ExecuteEnemyAction(bestCapPiece, bestCapDest, capture: true); return; }
+        if (bestAppPiece != null && bestAppDist != int.MaxValue) { ExecuteEnemyAction(bestAppPiece, bestAppDest, capture: false); return; }
+        if (anyPiece != null) ExecuteEnemyAction(anyPiece, anyDest, capture: false);
+    }
+
+    private int DistanceToNearestPlayer(HexCoord from)
+    {
+        int best = int.MaxValue;
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var p = _pieces[i];
+            if (!p.Alive || p.Side != PieceSide.Player) continue;
+            int d = p.Coord.Distance(from);
+            if (d < best) best = d;
+        }
+        return best;
+    }
+
+    private void ExecuteEnemyAction(BattlePiece enemy, HexCoord dest, bool capture)
+    {
+        if (capture && _occupied.TryGetValue(dest, out var victim) && victim.Side == PieceSide.Player)
+        {
+            // Royal Guard: the first attempt on your King each battle is blocked.
+            if (victim.Kind == PieceKind.King && _run.Has(GambitKind.RoyalGuard) && !_royalGuardUsed)
+            {
+                _royalGuardUsed = true;
+                EmitSignal(SignalName.StatusNote, "ROYAL GUARD");
+                return;                                // attacker's turn is spent
+            }
+            // Shield tile: the first friendly piece on it ignores one capture.
+            if (_run.TileUpgrades.TryGetValue(dest, out var up) && up == TileUpgradeKind.Shield
+                && !_shieldConsumed.Contains(dest))
+            {
+                _shieldConsumed.Add(dest);
+                EmitSignal(SignalName.StatusNote, "SHIELDED");
+                return;
+            }
+
+            KillPiece(victim, playerLossCounts: true);
+            PlayCaptureBurst(dest);
+        }
+
+        MovePieceTo(enemy, dest, tween: true);
+
+        // Snare tile: an enemy landing here skips its next turn.
+        if (_run.TileUpgrades.TryGetValue(dest, out var landUp) && landUp == TileUpgradeKind.Snare)
+        {
+            enemy.StunTurns = 1;
+            EmitSignal(SignalName.StatusNote, "SNARED");
         }
     }
 
-    // ----- Turn resolution ----------------------------------------------
-
-    // Ordered: commit pos -> capture+score+combo -> wave-clear short-circuit
-    // (always safe) -> hunter step with per-hunter caught check (first catcher
-    // ends the run). Mercy + spawn-grace are honoured inside AdvanceEnemies.
-    private void MoveTokenTo(HexCoord coord)
+    // Remove a piece from play. A player piece lost to the enemy or the crumble
+    // may be saved once per battle by the Mercy Charter (returns to reserve).
+    private void KillPiece(BattlePiece piece, bool playerLossCounts)
     {
-        _tokenPos = coord;
-        _selectionValid = false;
-        TweenTokenTo(coord);
-        PositionActiveRing(coord);
+        piece.Alive = false;
+        _pieces.Remove(piece);
+        // Identity check: on a player capture the mover has already claimed the
+        // victim's coord in the map — don't evict the newly landed piece.
+        if (_occupied.TryGetValue(piece.Coord, out var occ) && occ == piece)
+            _occupied.Remove(piece.Coord);
+        if (_selPiece == piece) EndSelect();
 
-        bool captured = TryCapture(coord);
-        PlayLandingRing(coord, captured);
-
-        if (captured)
+        if (playerLossCounts && piece.Side == PieceSide.Player
+            && _run != null && _run.Has(GambitKind.MercyCharter) && !_mercyUsed)
         {
-            _comboCount++;
-            int mult = Mathf.Min(_comboCount, 5);
-            AddScore(100 * mult);
-            if (_comboCount >= 2) EmitSignal(SignalName.ComboChanged, _comboCount);
+            _mercyUsed = true;
+            _run.Reserve.Add(piece.Kind);
+            EmitSignal(SignalName.StatusNote, "MERCY: TO RESERVE");
         }
-        else
-        {
-            _comboCount = 0;
-        }
-        int strength = captured ? Mathf.Min(35 + (_comboCount - 1) * 12, 90) : 15;
-        Haptics.Tap(strength);
 
-        // Wave cleared: award the clear bonus, ramp, and respawn (with grace).
-        if (_enemies.Count == 0)
+        var node = piece.Node;
+        if (node != null && IsInstanceValid(node))
         {
-            AddScore(250 * _wave);
-            EmitSignal(SignalName.BoardSolved);
-            _wave++;
-            EmitSignal(SignalName.WaveChanged, _wave);
-            SpawnWave(_wave);
-            _mercyThisTurn = false;
-            UpdateThreat();
+            var tween = CreateTween();
+            tween.TweenProperty(node, "scale", Vector3.Zero, 0.13f)
+                .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
+            tween.TweenCallback(Callable.From(() =>
+            {
+                if (IsInstanceValid(node)) node.QueueFree();
+            }));
+        }
+    }
+
+    // ----- Crumble -------------------------------------------------------------
+
+    // Each player action ticks the timer. At zero the outermost ring cracks
+    // (telegraphed, still playable); CrackGraceActions later it collapses —
+    // pieces on it die — and the next ring cracks. Radius <= 1 never crumbles.
+    private void TickCrumble()
+    {
+        if (_crumbleTimer > 0)
+        {
+            _crumbleTimer--;
+            if (_crumbleTimer == 0 && _outerRadius >= 2)
+            {
+                CrackRing(_outerRadius);
+                _crackCountdown = CrackGraceActions;
+            }
+            EmitSignal(SignalName.CrumbleChanged, _crumbleTimer, _cracked.Count > 0);
             return;
         }
 
-        bool caught = AdvanceEnemies(coord);
-        _mercyThisTurn = false;
-        if (caught)
+        if (_cracked.Count == 0) return;
+        _crackCountdown--;
+        if (_crackCountdown > 0) return;
+
+        CollapseCrackedRing();
+        if (_outerRadius >= 2)
         {
-            _running = false;          // gate any further board taps until Retry
-            return;                    // PlayerCaught already emitted
+            CrackRing(_outerRadius);
+            _crackCountdown = CrackGraceActions;
         }
-        UpdateThreat();
+        EmitSignal(SignalName.CrumbleChanged, 0, _cracked.Count > 0);
     }
+
+    private void CrackRing(int radius)
+    {
+        _coordScratch.Clear();
+        HexCoord.Ring(radius, _coordScratch);
+        for (int i = 0; i < _coordScratch.Count; i++)
+            if (_active.Contains(_coordScratch[i])) _cracked.Add(_coordScratch[i]);
+        RefreshAllTileVisuals();
+        SetThreat(true);
+        EmitSignal(SignalName.StatusNote, "THE BOARD CRACKS");
+    }
+
+    private void CollapseCrackedRing()
+    {
+        foreach (var c in _cracked)
+        {
+            _active.Remove(c);
+            if (_occupied.TryGetValue(c, out var piece))
+                KillPiece(piece, playerLossCounts: true);
+            if (_upgradeMarkers.TryGetValue(c, out var marker) && IsInstanceValid(marker))
+                marker.Visible = false;
+        }
+        _cracked.Clear();
+        _outerRadius--;
+        _stateStamp++;
+        _cacheStamp = -1;
+        RefreshAllTileVisuals();
+        SetThreat(false);
+        EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
+        EmitArmyCounts();
+    }
+
+    // ----- Win / loss ----------------------------------------------------------
+
+    private bool CheckBattleEnd()
+    {
+        if (!_running) return true;
+
+        if (CountSide(PieceSide.Enemy) == 0)
+        {
+            _running = false;
+            EndSelect();
+            AddScore(250 * _run.Battle);
+            AddMoney(4 + _run.Battle);
+
+            // The army going forward is whoever survived, in board order.
+            _run.Army.Clear();
+            for (int i = 0; i < _pieces.Count; i++)
+                if (_pieces[i].Alive && _pieces[i].Side == PieceSide.Player)
+                    _run.Army.Add(_pieces[i].Kind);
+
+            _run.Battle++;
+            SetThreat(false);
+            EmitSignal(SignalName.BattleWon);
+            return true;
+        }
+
+        if (CountSide(PieceSide.Player) == 0 && (_run == null || _run.Reserve.Count == 0))
+        {
+            _running = false;
+            EndSelect();
+            SetThreat(false);
+            EmitSignal(SignalName.BattleLost);
+            return true;
+        }
+
+        return false;
+    }
+
+    // ----- Scoring / money -------------------------------------------------------
 
     private void AddScore(int delta)
     {
-        _score += delta;
-        EmitSignal(SignalName.ScoreChanged, _score);
+        if (_run == null) return;
+        _run.Score += delta;
+        EmitSignal(SignalName.ScoreChanged, _run.Score);
     }
 
-    // Quick expanding shockwave ring at the landing tile (gold normally, copper
-    // on a capturing move). One pooled node, re-triggered each move.
+    private void AddMoney(int delta)
+    {
+        if (_run == null || delta == 0) return;
+        _run.Money += delta;
+        EmitSignal(SignalName.MoneyChanged, _run.Money);
+    }
+
+    private void SetThreat(bool threat)
+    {
+        if (threat == _threat) return;
+        _threat = threat;
+        EmitSignal(SignalName.ThreatChanged, threat);
+    }
+
+    // ----- Tile visuals ---------------------------------------------------------
+
+    private void RefreshTileVisual(HexCoord coord)
+    {
+        if (!_tiles.TryGetValue(coord, out var tile)) return;
+        if (_highlighted.Contains(coord)) return;     // selection paint wins
+        if (!_active.Contains(coord)) tile.Mesh.MaterialOverride = InactiveMaterial;
+        else if (_locked.Contains(coord)) tile.Mesh.MaterialOverride = LockedMaterial;
+        else if (_cracked.Contains(coord)) tile.Mesh.MaterialOverride = CrackedMaterial;
+        else tile.Mesh.MaterialOverride = tile.BaseMaterial;
+    }
+
+    private void RefreshAllTileVisuals()
+    {
+        foreach (var kv in _tiles) RefreshTileVisual(kv.Key);
+    }
+
+    // ----- FX (pooled nodes, re-triggered) ---------------------------------------
+
     private void PlayLandingRing(HexCoord coord, bool capture)
     {
         if (_ringNode == null)
@@ -744,8 +1183,6 @@ public partial class HexBoard : Node3D
         _ringTween = CreateTween();
         _ringTween.TweenProperty(_ringNode, "scale", new Vector3(1.5f, 1f, 1.5f), 0.28f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
-        // Tween the whole albedo_color to alpha-0 (rather than the ":a" sub-path) so the
-        // fade is unambiguous across renderer/value-type quirks.
         _ringTween.Parallel().TweenProperty(RingMaterialShared, "albedo_color",
                 new Color(ringColor.R, ringColor.G, ringColor.B, 0f), 0.28f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
@@ -755,279 +1192,27 @@ public partial class HexBoard : Node3D
         }));
     }
 
-    private void TweenTokenTo(HexCoord coord)
+    private void PositionSelectRing(HexCoord coord)
     {
-        var target = HexLayout.ToWorld(coord, TokenY);
-
-        var move = CreateTween();
-        move.TweenProperty(_token, "position", target, 0.18f)
-            .SetTrans(Tween.TransitionType.Sine)
-            .SetEase(Tween.EaseType.Out);
-
-        // Parallel squash-and-stretch: compress on launch, snap back on landing.
-        var squash = CreateTween();
-        squash.TweenProperty(_token, "scale", new Vector3(1.12f, 0.85f, 1.12f), 0.09f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
-        squash.TweenProperty(_token, "scale", Vector3.One, 0.09f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
-    }
-
-    private void PositionActiveRing(HexCoord coord)
-    {
-        if (_token == null) { HideActiveRing(); return; }
-        if (_activeRingNode == null)
+        if (_selectRingNode == null)
         {
-            _activeRingNode = new MeshInstance3D
+            _selectRingNode = new MeshInstance3D
             {
-                Mesh = SharedActiveRingMesh,
-                MaterialOverride = ActiveRingMaterialShared,
+                Mesh = SharedSelectRingMesh,
+                MaterialOverride = SelectRingMaterialShared,
             };
-            AddChild(_activeRingNode);
+            AddChild(_selectRingNode);
         }
-        _activeRingNode.Position = HexLayout.ToWorld(coord, RingY);
-        _activeRingNode.Visible = true;
+        _selectRingNode.Position = HexLayout.ToWorld(coord, RingY);
+        _selectRingNode.Visible = true;
     }
 
-    private void HideActiveRing()
+    private void HideSelectRing()
     {
-        if (_activeRingNode != null && IsInstanceValid(_activeRingNode))
-            _activeRingNode.Visible = false;
+        if (_selectRingNode != null && IsInstanceValid(_selectRingNode))
+            _selectRingNode.Visible = false;
     }
 
-    // ----- Hunters -------------------------------------------------------
-
-    // Each surviving hunter steps once. Freshly spawned hunters skip their first
-    // step (grace). Returns true (and emits PlayerCaught) the instant a hunter
-    // lands on the player — the first catcher wins and resolution stops.
-    private bool AdvanceEnemies(HexCoord playerPos)
-    {
-        for (int i = 0; i < _enemies.Count; i++)
-        {
-            var e = _enemies[i];
-            if (e.SpawnedThisWave) { e.SpawnedThisWave = false; continue; }
-
-            var chosen = PredictEnemyStep(i, playerPos, _mercyThisTurn);
-            if (chosen == e.Coord) continue;       // boxed in, holds position
-            e.Coord = chosen;
-            MoveEnemyVisual(e, chosen);
-
-            if (chosen == playerPos)
-            {
-                EmitSignal(SignalName.PlayerCaught);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Pure decision: where would hunter `index` step, without mutating state.
-    // Chase MAY land on the player (the lethal catch) unless mercy suppresses it
-    // this turn; Flee/RandomWalk always exclude the player tile. The IsEnemyAt
-    // anti-stack guard applies to every behaviour.
-    private HexCoord PredictEnemyStep(int index, HexCoord playerPos, bool mercy)
-    {
-        var e = _enemies[index];
-        var dirs = HexCoord.Directions;
-        bool lethal = e.Behavior == EnemyBehavior.Chase && !mercy;
-
-        _neighborScratch.Clear();
-        for (int d = 0; d < 6; d++)
-        {
-            var n = e.Coord + dirs[d];
-            if (!_tiles.ContainsKey(n)) continue;       // off-board
-            if (IsEnemyAt(n, index)) continue;          // never stack
-            if (n == playerPos && !lethal) continue;    // non-lethal behaviours avoid player
-            _neighborScratch.Add(n);
-        }
-        if (_neighborScratch.Count == 0) return e.Coord;
-
-        return e.Behavior switch
-        {
-            EnemyBehavior.Flee => PickByDistance(_neighborScratch, playerPos, maximize: true),
-            EnemyBehavior.Chase => PickByDistance(_neighborScratch, playerPos, maximize: false),
-            _ => _neighborScratch[_rng.Next(_neighborScratch.Count)],
-        };
-    }
-
-    private bool IsEnemyAt(HexCoord coord, int except)
-    {
-        for (int j = 0; j < _enemies.Count; j++)
-        {
-            if (j == except) continue;
-            if (_enemies[j].Coord == coord) return true;
-        }
-        return false;
-    }
-
-    private static HexCoord PickByDistance(List<HexCoord> options, HexCoord target, bool maximize)
-    {
-        var best = options[0];
-        int bestD = best.Distance(target);
-        for (int i = 1; i < options.Count; i++)
-        {
-            int d = options[i].Distance(target);
-            if (maximize ? d > bestD : d < bestD) { best = options[i]; bestD = d; }
-        }
-        return best;
-    }
-
-    private void MoveEnemyVisual(Enemy e, HexCoord coord)
-    {
-        if (e.Node == null || !IsInstanceValid(e.Node)) return;
-        var target = HexLayout.ToWorld(coord, TokenY);
-        var tween = CreateTween();
-        tween.TweenProperty(e.Node, "position", target, 0.16f)
-            .SetTrans(Tween.TransitionType.Sine)
-            .SetEase(Tween.EaseType.Out);
-    }
-
-    // Spawn the wave's hunters: count ramps with the wave (capped), behaviours
-    // follow the per-wave mix, and tiles are drawn from the token's BFS-reachable
-    // set minus the radius-1 disc around the player (never spawn adjacent).
-    private void SpawnWave(int wave)
-    {
-        ClearEnemies();
-        if (_token == null)
-        {
-            EmitSignal(SignalName.EnemiesChanged, 0);
-            RefreshReachOverlay();
-            return;
-        }
-
-        int count = Mathf.Min(BaseSpawn + (wave - 1), MaxSpawn);
-
-        ComputeReachable(_tokenPos);
-        _spawnScratch.Clear();
-        foreach (var c in _reachable)
-            if (c.Distance(_tokenPos) >= 2) _spawnScratch.Add(c);
-        // Fallback for tiny reachable sets: allow any reachable tile (still never
-        // the player's own tile — ComputeReachable removes the start).
-        if (_spawnScratch.Count < count)
-        {
-            _spawnScratch.Clear();
-            foreach (var c in _reachable) _spawnScratch.Add(c);
-        }
-
-        int target = Mathf.Min(count, _spawnScratch.Count);
-        AssignWaveBehaviors(wave, target);
-
-        for (int n = 0; n < target; n++)
-        {
-            int idx = _rng.Next(_spawnScratch.Count);
-            var coord = _spawnScratch[idx];
-            _spawnScratch[idx] = _spawnScratch[_spawnScratch.Count - 1];
-            _spawnScratch.RemoveAt(_spawnScratch.Count - 1);
-            AddEnemy(coord, _behaviorScratch[n]);
-        }
-        EmitSignal(SignalName.EnemiesChanged, _enemies.Count);
-        RefreshReachOverlay();
-        UpdateThreat();
-    }
-
-    // Difficulty ramp: wave 1 all-RandomWalk (un-losable teaching), then add
-    // Chasers (the only lethal class), keeping a non-Chase majority so the board
-    // stays legible. Tile assignment is already randomised by the spawn loop.
-    private void AssignWaveBehaviors(int wave, int count)
-    {
-        _behaviorScratch.Clear();
-        int chasers, fleers;
-        if (wave <= 1) { chasers = 0; fleers = 0; }
-        else if (wave == 2) { chasers = 1; fleers = 0; }
-        else if (wave == 3) { chasers = 1; fleers = 1; }
-        else
-        {
-            float pct = wave <= 5 ? 0.40f : 0.60f;     // <= the 70% anti-frustration cap
-            chasers = Mathf.Max(1, Mathf.FloorToInt(count * pct));
-            fleers = wave <= 5 ? 1 : Mathf.Max(1, count / 5);
-        }
-        chasers = Mathf.Min(chasers, count);
-        fleers = Mathf.Min(fleers, count - chasers);
-        int randoms = count - chasers - fleers;
-
-        for (int i = 0; i < chasers; i++) _behaviorScratch.Add(EnemyBehavior.Chase);
-        for (int i = 0; i < fleers; i++) _behaviorScratch.Add(EnemyBehavior.Flee);
-        for (int i = 0; i < randoms; i++) _behaviorScratch.Add(EnemyBehavior.RandomWalk);
-    }
-
-    private void AddEnemy(HexCoord coord, EnemyBehavior behavior)
-    {
-        var mesh = new MeshInstance3D
-        {
-            Mesh = SharedEnemyMesh,
-            MaterialOverride = EnemyMaterial,
-            Position = HexLayout.ToWorld(coord, TokenY),
-            Scale = Vector3.Zero,
-        };
-        AddChild(mesh);
-        _enemies.Add(new Enemy { Coord = coord, Node = mesh, Behavior = behavior, SpawnedThisWave = true });
-
-        var spawn = CreateTween();
-        spawn.TweenProperty(mesh, "scale", Vector3.One, 0.18f)
-            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
-    }
-
-    private void ClearEnemies()
-    {
-        for (int i = 0; i < _enemies.Count; i++)
-        {
-            var node = _enemies[i].Node;
-            if (node != null && IsInstanceValid(node)) node.QueueFree();
-        }
-        _enemies.Clear();
-    }
-
-    // BFS over the active token's movement graph: every tile the token can
-    // eventually reach from `start`. Hunters only spawn on reachable tiles so a
-    // board is never unsolvable. Reuses pooled buffers to stay alloc-free.
-    private void ComputeReachable(HexCoord start)
-    {
-        _reachable.Clear();
-        _bfsQueue.Clear();
-        _reachable.Add(start);
-        _bfsQueue.Enqueue(start);
-        while (_bfsQueue.Count > 0)
-        {
-            var cur = _bfsQueue.Dequeue();
-            _token.LegalMoves(cur, Radius, _bfsMoves);
-            for (int i = 0; i < _bfsMoves.Count; i++)
-            {
-                var n = _bfsMoves[i];
-                if (_tiles.ContainsKey(n) && _reachable.Add(n))
-                    _bfsQueue.Enqueue(n);
-            }
-        }
-        _reachable.Remove(start);
-    }
-
-    private bool TryCapture(HexCoord coord)
-    {
-        for (int i = 0; i < _enemies.Count; i++)
-        {
-            if (_enemies[i].Coord != coord) continue;
-            var node = _enemies[i].Node;
-            _enemies.RemoveAt(i);
-            CaptureVisual(node);
-            PlayCaptureBurst(coord);
-            EmitSignal(SignalName.EnemiesChanged, _enemies.Count);
-            return true;
-        }
-        return false;
-    }
-
-    private void CaptureVisual(MeshInstance3D node)
-    {
-        if (node == null || !IsInstanceValid(node)) return;
-        var tween = CreateTween();
-        tween.TweenProperty(node, "scale", Vector3.Zero, 0.13f)
-            .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
-        tween.TweenCallback(Callable.From(() =>
-        {
-            if (IsInstanceValid(node)) node.QueueFree();
-        }));
-    }
-
-    // Brief copper spark puff on capture. One pooled CPU emitter, repositioned
-    // and Restart()ed per capture (GL Compatibility safe; no GPU particles).
     private void PlayCaptureBurst(HexCoord coord)
     {
         if (_captureParticles == null)
@@ -1051,30 +1236,8 @@ public partial class HexBoard : Node3D
             };
             AddChild(_captureParticles);
         }
-        _captureParticles.Position = HexLayout.ToWorld(coord, TokenY);
+        _captureParticles.Position = HexLayout.ToWorld(coord, PieceY);
         _captureParticles.Restart();
         _captureParticles.Emitting = true;
-    }
-
-    // Ambient "you might lose" cue: true while any non-grace Chase hunter sits
-    // adjacent to the player. Emits ThreatChanged only on a flip.
-    private void UpdateThreat()
-    {
-        bool danger = false;
-        if (_running && _token != null)
-        {
-            for (int i = 0; i < _enemies.Count; i++)
-            {
-                var e = _enemies[i];
-                if (e.Behavior != EnemyBehavior.Chase) continue;
-                if (e.SpawnedThisWave) continue;
-                if (e.Coord.Distance(_tokenPos) == 1) { danger = true; break; }
-            }
-        }
-        if (danger != _inDanger)
-        {
-            _inDanger = danger;
-            EmitSignal(SignalName.ThreatChanged, danger);
-        }
     }
 }

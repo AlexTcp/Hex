@@ -3,24 +3,21 @@
 // =============================================================================
 // Purpose:
 //   Autoload Node that is the single source of truth for cross-screen game
-//   state. Holds the live run (selected piece, score, wave) plus the
-//   persisted meta-progression (best wave, high score, per-token best waves,
-//   tutorial-seen flag). Meta state is loaded from user://hex.cfg on _Ready
-//   and written back on the events that matter (a finished run, the tutorial
-//   being completed, and the app being backgrounded) so a force-kill on
-//   mobile never loses progress.
+//   state. Owns the live RunState (money, army, reserve, gambits, tile
+//   upgrades, battle number) plus the persisted meta-progression (best battle,
+//   high score, tutorial-seen flag). Meta state is loaded from user://hex.cfg
+//   on _Ready and written back on the events that matter (a finished run, the
+//   tutorial being completed, and the app being backgrounded) so a force-kill
+//   on mobile never loses progress.
 //
 // Interactions:
-//   - ScreenManager / GameScreen: read live + meta state to drive the HUD,
-//     Title, Character-Select and Game-Over screens; call ResetRun on run
-//     start, CommitRun on PlayerCaught, and MarkTutorialSeen on onboarding
-//     completion.
-//   - HexBoard: emits ScoreChanged / WaveChanged / PlayerCaught; the
-//     controller mirrors those into Score / Wave here. HexBoard does not
-//     reference GameSession directly (kept decoupled).
+//   - ScreenManager: calls StartNewRun when a run begins and CommitRun when it
+//     ends (defeat or victory); reads BestBattle/HighScore for the Title.
+//   - HexBoard / ShopScreen / Hud: mutate + read CurrentRun directly.
 // =============================================================================
 
 using Godot;
+using HexGame.Chess;
 
 namespace HexGame;
 
@@ -29,20 +26,15 @@ public partial class GameSession : Node
     private const string SavePath = "user://hex.cfg";
     private const string Section = "progress";
 
-    // Mirrors TokenCatalog.All.Length; kept as a local const so this autoload
-    // has no compile dependency on the Tokens namespace.
-    public const int TokenCount = 14;
+    private readonly System.Random _rng = new();
 
-    // ----- Live run state (transient; reset every run) -------------------
-    public int SelectedTokenIndex { get; set; } = 0;
-    public int Score { get; set; } = 0;
-    public int Wave { get; set; } = 1;
+    // ----- Live run state (transient) -------------------------------------
+    public RunState CurrentRun { get; private set; }
 
-    // ----- Persisted meta-progression ------------------------------------
-    public int BestWave { get; private set; } = 0;
+    // ----- Persisted meta-progression --------------------------------------
+    public int BestBattle { get; private set; } = 0;
     public int HighScore { get; private set; } = 0;
     public bool TutorialSeen { get; private set; } = false;
-    public readonly int[] PerTokenBestWave = new int[TokenCount];
 
     public override void _Ready()
     {
@@ -61,27 +53,27 @@ public partial class GameSession : Node
         }
     }
 
-    // Zero the live run for a fresh attempt with the given piece.
-    public void ResetRun(int tokenIndex)
+    // Roll a fresh run (3 random starter pieces, starting purse).
+    public RunState StartNewRun()
     {
-        SelectedTokenIndex = tokenIndex;
-        Score = 0;
-        Wave = 1;
+        CurrentRun = RunState.NewRun(_rng);
+        return CurrentRun;
     }
 
+    // Re-roll the pending starter army (used by the New Run screen before the
+    // first battle begins).
+    public RunState RerollRun() => StartNewRun();
+
     // Fold the just-ended run into the persistent records and write to disk.
-    // Returns true if a new global record (best wave or high score) was set,
-    // so the Game-Over screen can show a "NEW BEST!" flourish.
+    // Returns true if a new global record was set so the end screen can show a
+    // "NEW BEST!" flourish. `battlesCleared` is the number of battles won.
     public bool CommitRun()
     {
+        if (CurrentRun == null) return false;
+        int battlesCleared = CurrentRun.Battle - 1;
         bool newGlobalRecord = false;
-        if (Wave > BestWave) { BestWave = Wave; newGlobalRecord = true; }
-        if (Score > HighScore) { HighScore = Score; newGlobalRecord = true; }
-
-        int idx = SelectedTokenIndex;
-        if (idx >= 0 && idx < TokenCount && Wave > PerTokenBestWave[idx])
-            PerTokenBestWave[idx] = Wave;
-
+        if (battlesCleared > BestBattle) { BestBattle = battlesCleared; newGlobalRecord = true; }
+        if (CurrentRun.Score > HighScore) { HighScore = CurrentRun.Score; newGlobalRecord = true; }
         Save();
         return newGlobalRecord;
     }
@@ -99,21 +91,17 @@ public partial class GameSession : Node
         // First run (no file) leaves every field at its default — never throws.
         if (cfg.Load(SavePath) != Error.Ok) return;
 
-        BestWave = (int)cfg.GetValue(Section, "best_wave", 0);
+        BestBattle = (int)cfg.GetValue(Section, "best_battle", 0);
         HighScore = (int)cfg.GetValue(Section, "high_score", 0);
         TutorialSeen = (bool)cfg.GetValue(Section, "tutorial_seen", false);
-        for (int i = 0; i < TokenCount; i++)
-            PerTokenBestWave[i] = (int)cfg.GetValue(Section, $"per_token_best_{i}", 0);
     }
 
     private void Save()
     {
         var cfg = new ConfigFile();
-        cfg.SetValue(Section, "best_wave", BestWave);
+        cfg.SetValue(Section, "best_battle", BestBattle);
         cfg.SetValue(Section, "high_score", HighScore);
         cfg.SetValue(Section, "tutorial_seen", TutorialSeen);
-        for (int i = 0; i < TokenCount; i++)
-            cfg.SetValue(Section, $"per_token_best_{i}", PerTokenBestWave[i]);
         cfg.Save(SavePath);
     }
 }
