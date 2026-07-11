@@ -195,3 +195,13 @@ out of commits.)
       start alongside the announcement note.
 - [x] **Verified** — build clean; import clean (only new WAVs reimported — generator is
       deterministic); 60 autoplay runs 0 failures; UI-flow PASS.
+
+## Round 15
+
+- [x] **Leak canary in the autoplay harness** — prints node/orphan/object counts every 50
+      runs. First reading grew ~106 nodes/run, but that was the harness's own artifact:
+      it played every run synchronously inside `_Ready`, so QueueFree never flushed. The
+      driver now yields two frames between runs; with that fixed, counts are flat
+      (~490–580 nodes over 200 runs, orphans always 0) — **no real leak** in battle
+      setup/teardown, money pops, tweens, or audio players.
+- [x] **Verified** — 200 runs, 0 failures; difficulty curve steady (finale 63–65%).

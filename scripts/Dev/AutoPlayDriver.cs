@@ -44,7 +44,9 @@ public partial class AutoPlayDriver : Node
     private readonly int[] _cleared = new int[RunState.FinalBattle + 2];
     private readonly int[] _armySum = new int[RunState.FinalBattle + 2];
 
-    public override void _Ready()
+    public override void _Ready() => _ = Run();
+
+    private async System.Threading.Tasks.Task Run()
     {
         _board = new HexBoard();
         AddChild(_board);
@@ -59,7 +61,17 @@ public partial class AutoPlayDriver : Node
         try
         {
             for (int i = 0; i < runs; i++)
+            {
                 if (PlayRun(i)) victories++; else defeats++;
+                // Let QueueFree flush so the leak canary below is meaningful.
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                // Leak canary: node/orphan counts must stay flat across runs.
+                if ((i + 1) % 50 == 0)
+                    GD.Print($"[AUTOPLAY] after run {i + 1}: nodes={Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}, " +
+                        $"orphans={Performance.GetMonitor(Performance.Monitor.ObjectOrphanNodeCount)}, " +
+                        $"objects={Performance.GetMonitor(Performance.Monitor.ObjectCount)}");
+            }
         }
         catch (Exception e)
         {
