@@ -98,16 +98,27 @@ public partial class UiFlowDriver : Node
         if (await ExpectButton("II") == null) return;
 
         // Screenshot a selection (highlights + inspection chip) and an
-        // enemy-reach inspection before playing the battle out.
+        // enemy-reach inspection before playing the battle out. Select the
+        // piece nearest an enemy so red death tiles have a chance to appear.
         if (_shotDir != null)
         {
+            BattlePiece pick = null;
+            int best = int.MaxValue;
             foreach (var p in _board.DebugPieces)
             {
                 if (!p.Alive || p.Side != PieceSide.Player) continue;
-                _board.DebugTap(p.Coord);
+                foreach (var e in _board.DebugPieces)
+                {
+                    if (!e.Alive || e.Side != PieceSide.Enemy) continue;
+                    int d = p.Coord.Distance(e.Coord);
+                    if (d < best) { best = d; pick = p; }
+                }
+            }
+            if (pick != null)
+            {
+                _board.DebugTap(pick.Coord);
                 await Shot("04-selection");
-                _board.DebugTap(p.Coord);   // toggle off
-                break;
+                _board.DebugTap(pick.Coord);   // toggle off
             }
             foreach (var p in _board.DebugPieces)
             {
@@ -179,9 +190,18 @@ public partial class UiFlowDriver : Node
     private async Task<bool> PlayBattle(bool suicidal = false)
     {
         _won = _lost = false;
+        bool popShot = false;
         for (int actions = 0; actions < MaxActionsPerBattle && !_won && !_lost; actions++)
         {
+            int moneyBefore = _session.CurrentRun.Money;
             var result = BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, suicidal);
+            // Catch the first capture's floating +$N while it's still rising.
+            if (_shotDir != null && !popShot && !_won && !_lost
+                && _session.CurrentRun.Money > moneyBefore)
+            {
+                popShot = true;
+                await Shot("08-money-pop", waitFrames: 4);
+            }
             if (result == BotActionResult.NoAction)
             {
                 Fail("no player action available in a running battle");
@@ -206,11 +226,11 @@ public partial class UiFlowDriver : Node
     // ----- Helpers ---------------------------------------------------------
 
     // Capture the rendered viewport (windowed runs only — headless renders
-    // nothing). Waits out the screen cross-fade first.
-    private async Task Shot(string name)
+    // nothing). Waits out the screen cross-fade first by default.
+    private async Task Shot(string name, int waitFrames = 25)
     {
         if (_shotDir == null) return;
-        await Frames(25);
+        await Frames(waitFrames);
         var img = GetViewport().GetTexture().GetImage();
         var err = img.SavePng($"{_shotDir}/{name}.png");
         GD.Print(err == Error.Ok ? $"[UIFLOW] shot {name}" : $"[UIFLOW] shot {name} FAILED: {err}");

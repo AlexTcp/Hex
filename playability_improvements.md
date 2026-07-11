@@ -240,3 +240,12 @@ out of commits.)
       vertically-centred label. Screenshot-confirmed with the longest text.
 - [x] **Verified** — build clean; windowed UI-flow PASS, shots reviewed; 80 autoplay runs
       0 failures (24 wins).
+
+## Round 18
+
+- [x] **Deeper screenshot coverage** — the selection shot now picks the piece nearest an
+      enemy (maximizes death-tile odds in frame), and a fast shot (4-frame wait) captures
+      the first capture's floating +$N mid-rise. Money pop verified in-render: outlined
+      gold "+$2" above the capture hex, HUD money/score/enemies all consistent.
+- [x] **Verified** — build clean; windowed UI-flow PASS with 8 shots; no new issues found
+      in render review.
