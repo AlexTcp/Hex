@@ -560,6 +560,16 @@ public partial class HexBoard : Node3D, IBattleQuery
     private void EmitArmyCounts() =>
         EmitSignal(SignalName.ArmyChanged, CountSide(PieceSide.Player), _run?.Reserve.Count ?? 0);
 
+    // Base material by state: stunned enemies read snare-purple so the player
+    // can see which piece is skipping its turn (the selected glow still wins).
+    private void RefreshPieceVisual(BattlePiece p)
+    {
+        if (p == _selPiece || p.Node == null || !IsInstanceValid(p.Node)) return;
+        p.Node.MaterialOverride = p.Side == PieceSide.Enemy && p.StunTurns > 0
+            ? PieceVisuals.StunnedMaterial
+            : PieceVisuals.MaterialFor(p.Side);
+    }
+
     // ----- Input -------------------------------------------------------------
 
     private void OnTileInput(HexCoord coord, InputEvent e)
@@ -837,6 +847,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _run.Reserve.RemoveAt(idx);
         SpawnPiece(kind, PieceSide.Player, coord);
         PlayLandingRing(coord, false);
+        Sfx.Play("move", -7f);
         Haptics.Tap(15);
         PromoteStrandedPawns();
 
@@ -935,6 +946,7 @@ public partial class HexBoard : Node3D, IBattleQuery
                 if (p.Alive && p.Side == PieceSide.Enemy && p.Coord.Distance(dest) == 1)
                 {
                     p.StunTurns = 1;
+                    RefreshPieceVisual(p);
                     stunned++;
                 }
             }
@@ -1137,7 +1149,11 @@ public partial class HexBoard : Node3D, IBattleQuery
         for (int i = 0; i < _pieces.Count; i++)
         {
             var e = _pieces[i];
-            if (e.Alive && e.Side == PieceSide.Enemy && e.StunTurns > 0) e.StunTurns--;
+            if (e.Alive && e.Side == PieceSide.Enemy && e.StunTurns > 0)
+            {
+                e.StunTurns--;
+                if (e.StunTurns == 0) RefreshPieceVisual(e);
+            }
         }
 
         if (bestCapPiece != null) { ExecuteEnemyAction(bestCapPiece, bestCapDest, capture: true); return; }
@@ -1188,6 +1204,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (_run.TileUpgrades.TryGetValue(dest, out var landUp) && landUp == TileUpgradeKind.Snare)
         {
             enemy.StunTurns = 1;
+            RefreshPieceVisual(enemy);
             EmitSignal(SignalName.StatusNote, "SNARED");
         }
     }

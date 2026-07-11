@@ -260,3 +260,12 @@ out of commits.)
       ("SURVIVORS +N"), applied before BattleWon so the end screen shows it.
 - [x] **Verified** — build clean; windowed UI-flow PASS with 9 shots (victory confetti
       confirmed in-render); 80 autoplay runs 0 failures (24 wins).
+
+## Round 20
+
+- [x] **Stunned enemies get a visible state** — shared snare-purple alloy material while
+      StunTurns > 0 (`RefreshPieceVisual`), applied on Snare landings and Knight Fork,
+      reverted when the stun expires. The death-tile logic already excluded stunned
+      enemies; now the player can see why a tile isn't red.
+- [x] **Deploy sound** — deploys now thud like moves.
+- [x] **Verified** — build clean; 80 autoplay runs 0 failures (22 wins); UI-flow PASS.

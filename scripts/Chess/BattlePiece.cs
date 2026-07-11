@@ -49,9 +49,11 @@ public static class PieceVisuals
         RimTint = 0.5f,
     };
 
-    // Player = warm ivory-silver; enemy = the established oxblood.
+    // Player = warm ivory-silver; enemy = the established oxblood. A stunned
+    // enemy shifts to snare-purple so the skipped turn is visible on the board.
     public static readonly StandardMaterial3D PlayerMaterial = Metal(new Color(0.95f, 0.93f, 0.86f));
     public static readonly StandardMaterial3D EnemyMaterial = Metal(new Color(0.42f, 0.10f, 0.10f));
+    public static readonly StandardMaterial3D StunnedMaterial = Metal(new Color(0.40f, 0.26f, 0.50f));
 
     // Gold glow while the piece is selected (emissive is the sanctioned "glow").
     private static readonly Color GoldColor = new(0.890f, 0.698f, 0.235f);
