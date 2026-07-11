@@ -22,6 +22,7 @@ using System;
 using System.Threading.Tasks;
 using HexGame.Board;
 using HexGame.Chess;
+using HexGame.Hex;
 using HexGame.UI;
 #endif
 
@@ -99,20 +100,35 @@ public partial class UiFlowDriver : Node
         if (await ExpectButton("II") == null) return;
 
         // Screenshot a selection (highlights + inspection chip) and an
-        // enemy-reach inspection before playing the battle out. Select the
-        // piece nearest an enemy so red death tiles have a chance to appear.
+        // enemy-reach inspection before playing the battle out. Prefer a piece
+        // with a death-tile move so the red warning appears in frame; fall
+        // back to the piece nearest an enemy.
         if (_shotDir != null)
         {
+            var moves = new System.Collections.Generic.List<HexCoord>(64);
             BattlePiece pick = null;
             int best = int.MaxValue;
+            bool pickHasDanger = false;
             foreach (var p in _board.DebugPieces)
             {
                 if (!p.Alive || p.Side != PieceSide.Player) continue;
+                PieceRules.LegalMoves(p.Kind, PieceSide.Player, p.Coord, _board, moves);
+                bool hasDanger = false;
+                foreach (var m in moves)
+                    if (_board.DebugIsDeathTile(p, m)) { hasDanger = true; break; }
+                int dist = int.MaxValue;
                 foreach (var e in _board.DebugPieces)
                 {
                     if (!e.Alive || e.Side != PieceSide.Enemy) continue;
                     int d = p.Coord.Distance(e.Coord);
-                    if (d < best) { best = d; pick = p; }
+                    if (d < dist) dist = d;
+                }
+                if ((hasDanger && !pickHasDanger)
+                    || (hasDanger == pickHasDanger && dist < best))
+                {
+                    pick = p;
+                    best = dist;
+                    pickHasDanger = hasDanger;
                 }
             }
             if (pick != null)

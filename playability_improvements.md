@@ -318,3 +318,12 @@ out of commits.)
       internally but invisible). `TickCrumble` emits the crack countdown through
       CrumbleChanged's turnsLeft while cracking.
 - [x] **Verified** — build clean; 80 autoplay runs 0 failures (23 wins); UI-flow PASS.
+
+## Round 26
+
+- [x] **Selection shot prefers pieces with death-tile moves** — the red warning still has
+      never been captured in-render; the driver now scans every player piece for a
+      dangerous move and selects one when it exists (falls back to nearest-enemy).
+      Verified the cracked-board shot renders correctly after the flourish fix
+      ("THE BOARD CRACKS" centred over the smouldering ring).
+- [x] **Verified** — build clean; windowed UI-flow PASS.
