@@ -25,6 +25,27 @@ public enum BossModifier
     CrumbleCrown,   // crumble starts earlier, but cracked-tile captures pay bonus money
 }
 
+// Display copy for boss modifiers — the boss must never act silently: the HUD
+// names it, the battle-start note explains it, and the shop warns about it.
+public static class BossCatalog
+{
+    public static string NameOf(BossModifier boss) => boss switch
+    {
+        BossModifier.Lockmaker => "Lockmaker",
+        BossModifier.TaxCollector => "Tax Collector",
+        BossModifier.CrumbleCrown => "Crumble Crown",
+        _ => "",
+    };
+
+    public static string EffectOf(BossModifier boss) => boss switch
+    {
+        BossModifier.Lockmaker => "3 tiles frozen for 2 turns",
+        BossModifier.TaxCollector => "your first capture pays nothing",
+        BossModifier.CrumbleCrown => "faster crumble, cracked captures +$2",
+        _ => "",
+    };
+}
+
 public static class BattlePlanner
 {
     // Early battles use a small active area, expanding toward the full board.

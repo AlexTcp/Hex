@@ -113,6 +113,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     private CpuParticles3D _captureParticles;
     private readonly Dictionary<HexCoord, MeshInstance3D> _upgradeMarkers = new();
     private bool _threat = false;
+    private HexCoord? _shopPreviewCoord;     // tile a shop offer would claim
 
     // ----- Premium Slate palette (Compatibility-safe: emissive only) -------
     private static readonly Color TileColorA = new(0.165f, 0.180f, 0.212f);
@@ -367,6 +368,11 @@ public partial class HexBoard : Node3D, IBattleQuery
         EmitArmyCounts();
         EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
         SetThreat(false);
+
+        // A boss must announce itself — its rules bend invisibly otherwise.
+        if (_boss != BossModifier.None)
+            EmitSignal(SignalName.StatusNote,
+                $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
     }
 
     private void ResetBattleState(int activeRadius)
@@ -385,6 +391,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _firstCaptureDone = false;
         _mercyUsed = false;
         _stagnantActions = 0;
+        _shopPreviewCoord = null;
         _echoUsed = false;
         _royalGuardUsed = false;
         _stateStamp++;
@@ -1274,10 +1281,25 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     // ----- Tile visuals ---------------------------------------------------------
 
+    // Shop hook: gold-mark the tile a tile-upgrade offer would claim, over the
+    // frozen post-battle board, so the player sees exactly what they'd buy.
+    public void SetShopPreviewTile(HexCoord? coord)
+    {
+        var prev = _shopPreviewCoord;
+        _shopPreviewCoord = coord;
+        if (prev.HasValue) RefreshTileVisual(prev.Value);
+        if (coord.HasValue) RefreshTileVisual(coord.Value);
+    }
+
     private void RefreshTileVisual(HexCoord coord)
     {
         if (!_tiles.TryGetValue(coord, out var tile)) return;
         if (_highlighted.Contains(coord)) return;     // selection paint wins
+        if (_shopPreviewCoord == coord)
+        {
+            tile.Mesh.MaterialOverride = HighlightMaterialShared;
+            return;
+        }
         if (!_active.Contains(coord)) tile.Mesh.MaterialOverride = InactiveMaterial;
         else if (_locked.Contains(coord)) tile.Mesh.MaterialOverride = LockedMaterial;
         else if (_cracked.Contains(coord)) tile.Mesh.MaterialOverride = CrackedMaterial;

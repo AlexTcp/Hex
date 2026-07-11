@@ -38,3 +38,20 @@ Godot binary used: `C:\Users\AlexT\Downloads\Godot_v4.6.2-stable_mono_win64\Godo
 **Balance note for a later round:** defeat histogram over 99 bot defeats peaks hard at
 battle 4 (first boss, Lockmaker): 32/99. The bot is weaker than a human, but watch the
 first-boss difficulty cliff.
+
+## Round 2
+
+- [x] **Announce boss modifiers** — added `BossCatalog` (name + effect copy) in
+      `BattlePlanner.cs`; battle-start StatusNote ("LOCKMAKER: 3 TILES FROZEN FOR 2 TURNS"),
+      HUD battle label names the boss ("BATTLE 4 — LOCKMAKER"), shop heading warns
+      ("THE EXCHEQUER — LOCKMAKER AWAITS") with a danger-red effect line under it.
+- [x] **Crumble chip terminal state** — `Hud.SetCrumble` shows muted "CRUMBLED" when
+      turnsLeft==0 and nothing is cracking (was danger-red "CRUMBLE IN 0" forever).
+- [x] **Show the shop's tile-upgrade target on the board** — `HexBoard.SetShopPreviewTile`
+      gold-lights the claimed hex behind the shop (cleared on continue and battle reset);
+      card text now says "Claims the tile lit gold on the board" instead of raw coords.
+- [x] **List owned gambits on Pause** — `PauseOverlay.Refresh(RunState)` lists owned gambit
+      names, hidden when none.
+- [x] **Verified** — build clean; 60 bot runs 0 failures (2 victories); headless boot clean.
+      Note: the bot bypasses the UI screens, so Round 3 should add a UI-flow smoke test that
+      drives the real screens (Title → NewRun → battle → Shop → Pause → GameOver).

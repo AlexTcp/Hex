@@ -117,7 +117,7 @@ public partial class ScreenManager : Node
         _hud = new Hud(GoPause, OnDeployRequested);
         _title = new TitleScreen(_session, GoNewRun, ShowTutorial);
         _newRun = new NewRunScreen(_session.RerollRun, BeginRun, GoTitle);
-        _shop = new ShopScreen(NextBattle);
+        _shop = new ShopScreen(NextBattle, _board.SetShopPreviewTile);
         _pause = new PauseOverlay(ResumeFromPause, AbandonRun);
         _gameOver = new GameOverScreen(GoNewRun, GoTitle);
         _tutorial = new TutorialOverlay(OnTutorialComplete);
@@ -225,7 +225,7 @@ public partial class ScreenManager : Node
         StopDrift();
         RestoreCamera();
         _hud.BindRun(run);
-        _hud.SetBattle(run.Battle, RunState.IsBossBattle(run.Battle));
+        _hud.SetBattle(run.Battle, BattlePlanner.BossFor(run.Battle));
         _board.StartBattle(run);
         GoState(AppState.Playing, _hud, 0f);
     }
@@ -239,8 +239,7 @@ public partial class ScreenManager : Node
     private void GoPause()
     {
         _board.ClearSelection();   // don't leave highlights/pulse behind the menu
-        var run = _session.CurrentRun;
-        _pause.Refresh(run?.Battle ?? 1, run?.Score ?? 0);
+        _pause.Refresh(_session.CurrentRun);
         GoState(AppState.Paused, _pause, 0.5f, 0.18f);
     }
 

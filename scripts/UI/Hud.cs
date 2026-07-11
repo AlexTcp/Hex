@@ -138,11 +138,14 @@ public partial class Hud : Control
         RebuildReserveBar();
     }
 
-    public void SetBattle(int battle, bool boss)
+    public void SetBattle(int battle, BossModifier boss)
     {
         if (_battleLabel == null) return;
-        _battleLabel.Text = boss ? $"BATTLE {battle} — BOSS" : $"BATTLE {battle}";
-        _battleLabel.AddThemeColorOverride("font_color", boss ? UiTheme.Danger : UiTheme.Text);
+        _battleLabel.Text = boss != BossModifier.None
+            ? $"BATTLE {battle} — {BossCatalog.NameOf(boss).ToUpperInvariant()}"
+            : $"BATTLE {battle}";
+        _battleLabel.AddThemeColorOverride("font_color",
+            boss != BossModifier.None ? UiTheme.Danger : UiTheme.Text);
     }
 
     public void SetEnemies(int remaining)
@@ -166,6 +169,12 @@ public partial class Hud : Control
         {
             _crumbleLabel.Text = "CRUMBLING";
             _crumbleLabel.AddThemeColorOverride("font_color", UiTheme.Danger);
+        }
+        else if (turnsLeft <= 0)
+        {
+            // The final ring has collapsed; the board holds from here on.
+            _crumbleLabel.Text = "CRUMBLED";
+            _crumbleLabel.AddThemeColorOverride("font_color", UiTheme.TextMuted);
         }
         else
         {

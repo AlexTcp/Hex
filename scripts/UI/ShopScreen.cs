@@ -28,19 +28,22 @@ public partial class ShopScreen : Control
     private const int RerollPrice = 2;
 
     private readonly Action _onContinue;
+    private readonly Action<HexCoord?> _onPreviewTile;   // mark the offer's tile on the board
     private readonly Random _rng = new();
 
     private RunState _run;
     private Label _money;
     private Label _heading;
+    private Label _bossLine;
     private HBoxContainer _cardRow;
     private Button _reroll;
 
     private readonly List<(Button Buy, int Price)> _buyButtons = new();
 
-    public ShopScreen(Action onContinue)
+    public ShopScreen(Action onContinue, Action<HexCoord?> onPreviewTile)
     {
         _onContinue = onContinue;
+        _onPreviewTile = onPreviewTile;
     }
 
     public override void _Ready()
@@ -67,6 +70,10 @@ public partial class ShopScreen : Control
         _heading = UiTheme.MakeLabel("THE EXCHEQUER", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
         col.AddChild(_heading);
 
+        _bossLine = UiTheme.MakeLabel("", UiTheme.BodySmallSize, UiTheme.Danger, HorizontalAlignment.Center);
+        _bossLine.Visible = false;
+        col.AddChild(_bossLine);
+
         _money = UiTheme.MakeLabel("", UiTheme.HudPrimarySize, UiTheme.Accent, HorizontalAlignment.Center);
         col.AddChild(_money);
 
@@ -83,7 +90,11 @@ public partial class ShopScreen : Control
         footer.AddChild(_reroll);
         var cont = UiTheme.PrimaryButton("NEXT BATTLE");
         cont.CustomMinimumSize = new Vector2(300, 80);
-        cont.Pressed += () => _onContinue?.Invoke();
+        cont.Pressed += () =>
+        {
+            _onPreviewTile?.Invoke(null);
+            _onContinue?.Invoke();
+        };
         footer.AddChild(cont);
         col.AddChild(footer);
     }
@@ -91,8 +102,18 @@ public partial class ShopScreen : Control
     public void Present(RunState run)
     {
         _run = run;
-        bool bossNext = RunState.IsBossBattle(run.Battle);
-        _heading.Text = bossNext ? "THE EXCHEQUER — A BOSS AWAITS" : "THE EXCHEQUER";
+        var boss = BattlePlanner.BossFor(run.Battle);
+        if (boss != BossModifier.None)
+        {
+            _heading.Text = $"THE EXCHEQUER — {BossCatalog.NameOf(boss).ToUpperInvariant()} AWAITS";
+            _bossLine.Text = BossCatalog.EffectOf(boss);
+            _bossLine.Visible = true;
+        }
+        else
+        {
+            _heading.Text = "THE EXCHEQUER";
+            _bossLine.Visible = false;
+        }
         BuildOffers();
         RefreshMoney();
     }
@@ -147,12 +168,15 @@ public partial class ShopScreen : Control
         }
 
         // One tile upgrade, assigned a random un-upgraded coord near the centre.
+        // The claimed tile is lit gold on the board behind this screen — raw
+        // coordinates mean nothing to a player.
         var up = TileUpgradeCatalog.All[_rng.Next(TileUpgradeCatalog.All.Length)];
         var coord = RollUpgradeCoord();
+        _onPreviewTile?.Invoke(coord);
         if (coord.HasValue)
         {
             var c = coord.Value;
-            AddOffer("TILE", up.Name, $"{up.Description}\nClaims hex ({c.Q},{c.R}).", up.Price,
+            AddOffer("TILE", up.Name, $"{up.Description}\nClaims the tile lit gold on the board.", up.Price,
                 () => _run.TileUpgrades[c] = up.Kind);
         }
     }
