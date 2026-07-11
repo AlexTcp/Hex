@@ -327,3 +327,13 @@ out of commits.)
       Verified the cracked-board shot renders correctly after the flourish fix
       ("THE BOARD CRACKS" centred over the smouldering ring).
 - [x] **Verified** — build clean; windowed UI-flow PASS.
+
+## Round 27
+
+- [x] **Isolate the tutorial fade from the transition-kill sweep** — Round 24's fix kills
+      all `_transitionTweens` on every GoState; the tutorial's fade-out was registered
+      there, so completing the tutorial and pausing within 0.22s could kill the fade before
+      its hide callback — a ghost tutorial scrim would then eat all UI input. The tutorial
+      now fades on its own dedicated tween (killed only by its own re-fade / exit).
+- [x] **Verified** — build clean; UI-flow PASS on a cleared save (tutorial path exercised);
+      60 autoplay runs 0 failures.

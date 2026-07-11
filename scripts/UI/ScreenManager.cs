@@ -58,6 +58,7 @@ public partial class ScreenManager : Node
     private Tween _shakeTween;
     private readonly System.Collections.Generic.List<Tween> _transitionTweens = new();
     private Control[] _allScreens;
+    private Tween _tutorialTween;
 
     public ScreenManager(HexBoard board, Camera3D camera, GameSession session, Control root)
     {
@@ -86,6 +87,7 @@ public partial class ScreenManager : Node
         _dangerTween?.Kill();
         _driftTween?.Kill();
         _shakeTween?.Kill();
+        _tutorialTween?.Kill();
         foreach (var t in _transitionTweens) t?.Kill();
         _transitionTweens.Clear();
         if (_board != null)
@@ -309,15 +311,27 @@ public partial class ScreenManager : Node
         UpdatePicking();
         _tutorial.Visible = true;
         _tutorial.Begin();
-        FadeAlpha(_tutorial, "modulate:a", 1f, 0.22f);
+        FadeTutorial(1f);
     }
 
     private void OnTutorialComplete()
     {
         _session.MarkTutorialSeen();
         _tutorialActive = false;
-        FadeAlpha(_tutorial, "modulate:a", 0f, 0.22f, () => _tutorial.Visible = false);
+        FadeTutorial(0f, () => _tutorial.Visible = false);
         UpdatePicking();
+    }
+
+    // The tutorial overlays screen states, so its fade must NOT ride the
+    // transition-tween list — a GoState during the fade-out would kill it
+    // before the hide callback, leaving a ghost scrim that eats all UI input.
+    private void FadeTutorial(float to, Action onDone = null)
+    {
+        _tutorialTween?.Kill();
+        _tutorialTween = CreateTween();
+        _tutorialTween.TweenProperty(_tutorial, "modulate:a", to, 0.22f)
+            .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        if (onDone != null) _tutorialTween.TweenCallback(Callable.From(onDone));
     }
 
     // ----- Input gating --------------------------------------------------
