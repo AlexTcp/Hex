@@ -46,6 +46,11 @@ public partial class HexBoard : Node3D, IBattleQuery
     private const int CrackGraceActions = 2;   // player actions between crack and collapse
     private const int StandoffActions = 16;    // capture-free terminal actions before adjudication
 
+    // The enemy's answer resolves synchronously but its VISUALS lag so the
+    // exchange reads as call-and-response instead of a simultaneous blur.
+    private const float EnemyMoveDelay = 0.22f;
+    private const float EnemyStrikeDelay = 0.32f;   // victim shrink + spark as the attacker lands
+
     [Signal] public delegate void MoneyChangedEventHandler(int money);
     [Signal] public delegate void ScoreChangedEventHandler(int score);
     [Signal] public delegate void EnemiesChangedEventHandler(int remaining);
@@ -731,10 +736,12 @@ public partial class HexBoard : Node3D, IBattleQuery
             // Nowhere to deploy: report the mode ended so the HUD disarms.
             _deployIndex = -1;
             EmitSignal(SignalName.DeployModeChanged, false);
+            EmitSignal(SignalName.StatusNote, "NO ROOM TO DEPLOY");
             return;
         }
         StartHighlightPulse();
         EmitSignal(SignalName.DeployModeChanged, true);
+        EmitSignal(SignalName.StatusNote, "TAP A LIT TILE TO DEPLOY");
     }
 
     public void CancelDeploy()
@@ -785,7 +792,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         AfterPlayerAction();
     }
 
-    private void MovePieceTo(BattlePiece piece, HexCoord dest, bool tween)
+    private void MovePieceTo(BattlePiece piece, HexCoord dest, bool tween, float delay = 0f)
     {
         _occupied.Remove(piece.Coord);
         piece.Coord = dest;
@@ -796,10 +803,12 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (!tween) { piece.Node.Position = target; return; }
 
         var move = CreateTween();
+        if (delay > 0f) move.TweenInterval(delay);
         move.TweenProperty(piece.Node, "position", target, 0.18f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
 
         var squash = CreateTween();
+        if (delay > 0f) squash.TweenInterval(delay);
         squash.TweenProperty(piece.Node, "scale", new Vector3(1.12f, 0.85f, 1.12f), 0.09f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
         squash.TweenProperty(piece.Node, "scale", Vector3.One, 0.09f)
@@ -1085,11 +1094,11 @@ public partial class HexBoard : Node3D, IBattleQuery
                 return;
             }
 
-            KillPiece(victim, playerLossCounts: true);
-            PlayCaptureBurst(dest);
+            KillPiece(victim, playerLossCounts: true, fxDelay: EnemyStrikeDelay);
+            PlayCaptureBurst(dest, EnemyStrikeDelay);
         }
 
-        MovePieceTo(enemy, dest, tween: true);
+        MovePieceTo(enemy, dest, tween: true, delay: EnemyMoveDelay);
 
         // Snare tile: an enemy landing here skips its next turn.
         if (_run.TileUpgrades.TryGetValue(dest, out var landUp) && landUp == TileUpgradeKind.Snare)
@@ -1101,7 +1110,9 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     // Remove a piece from play. A player piece lost to the enemy or the crumble
     // may be saved once per battle by the Mercy Charter (returns to reserve).
-    private void KillPiece(BattlePiece piece, bool playerLossCounts)
+    // fxDelay defers only the shrink visual (used when the attacker's own move
+    // animation is delayed, so the victim vanishes as the attacker arrives).
+    private void KillPiece(BattlePiece piece, bool playerLossCounts, float fxDelay = 0f)
     {
         _stagnantActions = 0;
         piece.Alive = false;
@@ -1124,6 +1135,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (node != null && IsInstanceValid(node))
         {
             var tween = CreateTween();
+            if (fxDelay > 0f) tween.TweenInterval(fxDelay);
             tween.TweenProperty(node, "scale", Vector3.Zero, 0.13f)
                 .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
             tween.TweenCallback(Callable.From(() =>
@@ -1382,8 +1394,15 @@ public partial class HexBoard : Node3D, IBattleQuery
             _selectRingNode.Visible = false;
     }
 
-    private void PlayCaptureBurst(HexCoord coord)
+    private void PlayCaptureBurst(HexCoord coord, float delay = 0f)
     {
+        if (delay > 0f)
+        {
+            var t = CreateTween();
+            t.TweenInterval(delay);
+            t.TweenCallback(Callable.From(() => PlayCaptureBurst(coord)));
+            return;
+        }
         if (_captureParticles == null)
         {
             _captureParticles = new CpuParticles3D

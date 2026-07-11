@@ -90,3 +90,14 @@ out of commits.)
       across battles (the mechanic the curve hinges on). Tutorial step 2 now reads
       "pieces you lose are gone for good — restock your army at the shop".
 - [x] **Verified** — build clean; 300 instrumented runs 0 failures, exit 0.
+
+## Round 5
+
+- [x] **Sequence the enemy's answer visually** — enemy move tween now starts 0.22s after the
+      player's; a captured player piece shrinks (and sparks) at 0.32s as the attacker lands.
+      Logic stays fully synchronous — only TweenInterval prefixes on the visuals
+      (`MovePieceTo`/`KillPiece`/`PlayCaptureBurst` gained delay params).
+- [x] **Deploy-mode hint** — arming deploy shows "TAP A LIT TILE TO DEPLOY"; a full board
+      shows "NO ROOM TO DEPLOY" instead of silently disarming.
+- [x] **Verified** — build clean; 100 autoplay runs 0 failures (30 victories — curve steady);
+      UI-flow PASS.
