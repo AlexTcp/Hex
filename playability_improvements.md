@@ -101,3 +101,11 @@ out of commits.)
       shows "NO ROOM TO DEPLOY" instead of silently disarming.
 - [x] **Verified** — build clean; 100 autoplay runs 0 failures (30 victories — curve steady);
       UI-flow PASS.
+
+## Round 6
+
+- [x] **Floating +$N money pops** — pooled Label3D rising/fading at the earning hex, for
+      captures (full computed payout incl. Gold tile / gambit / boss bonuses), Blessed
+      deploys, Pawn Ambition promotions, and the battle-clear payout at board centre.
+- [x] **"NO LEGAL MOVES" note** — selecting a blocked piece now says why no tiles lit.
+- [x] **Verified** — build clean; 100 autoplay runs 0 failures (31 wins); boot clean.

@@ -116,6 +116,8 @@ public partial class HexBoard : Node3D, IBattleQuery
     private Tween _ringTween;
     private MeshInstance3D _selectRingNode;
     private CpuParticles3D _captureParticles;
+    private Label3D _moneyPop;
+    private Tween _moneyPopTween;
     private readonly Dictionary<HexCoord, MeshInstance3D> _upgradeMarkers = new();
     private bool _threat = false;
     private HexCoord? _shopPreviewCoord;     // tile a shop offer would claim
@@ -627,6 +629,11 @@ public partial class HexBoard : Node3D, IBattleQuery
         piece.Node.MaterialOverride = PieceVisuals.SelectedMaterial;
         PositionSelectRing(piece.Coord);
         StartHighlightPulse();
+
+        // A blocked piece still selects (gold glow), but with no lit tiles the
+        // tap reads as dead — say why.
+        if (_movesBuffer.Count == 0)
+            EmitSignal(SignalName.StatusNote, "NO LEGAL MOVES");
     }
 
     private void EndSelect()
@@ -768,6 +775,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (_run.TileUpgrades.TryGetValue(coord, out var up) && up == TileUpgradeKind.Blessed)
         {
             AddMoney(1);
+            ShowMoneyPop(coord, 1);
             EmitSignal(SignalName.StatusNote, "BLESSED +1");
         }
 
@@ -842,6 +850,7 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         AddMoney(money);
         AddScore(PieceCatalog.ValueOf(target.Kind) * 100);
+        ShowMoneyPop(dest, money);
         KillPiece(target, playerLossCounts: false);
         PlayCaptureBurst(dest);
 
@@ -881,7 +890,11 @@ public partial class HexBoard : Node3D, IBattleQuery
         EmitSignal(SignalName.StatusNote, player
             ? $"PROMOTED: {PieceCatalog.NameOf(pawn.Kind).ToUpperInvariant()}"
             : $"ENEMY PROMOTED: {PieceCatalog.NameOf(pawn.Kind).ToUpperInvariant()}");
-        if (player && _run != null && _run.Has(GambitKind.PawnAmbition)) AddMoney(3);
+        if (player && _run != null && _run.Has(GambitKind.PawnAmbition))
+        {
+            AddMoney(3);
+            ShowMoneyPop(pawn.Coord, 3);
+        }
     }
 
     // Prefer a promotion kind that can actually move from this tile — a knight
@@ -1238,6 +1251,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         EndSelect();
         AddScore(250 * _run.Battle);
         AddMoney(4 + _run.Battle);
+        ShowMoneyPop(HexCoord.Zero, 4 + _run.Battle);
 
         // The army going forward is whoever survived, in board order.
         _run.Army.Clear();
@@ -1392,6 +1406,42 @@ public partial class HexBoard : Node3D, IBattleQuery
     {
         if (_selectRingNode != null && IsInstanceValid(_selectRingNode))
             _selectRingNode.Visible = false;
+    }
+
+    // Floating "+$N" over the hex that earned it — payouts vary (piece value,
+    // Gold tiles, gambits, boss bonuses) and the corner chip alone hides that.
+    private void ShowMoneyPop(HexCoord coord, int amount)
+    {
+        if (amount <= 0) return;
+        if (_moneyPop == null)
+        {
+            _moneyPop = new Label3D
+            {
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                FontSize = 96,
+                PixelSize = 0.005f,
+                OutlineSize = 24,
+                OutlineModulate = new Color(0, 0, 0, 0.85f),
+                NoDepthTest = true,
+                Visible = false,
+            };
+            AddChild(_moneyPop);
+        }
+        _moneyPopTween?.Kill();
+        _moneyPop.Text = $"+${amount}";
+        _moneyPop.Position = HexLayout.ToWorld(coord, 0.6f);
+        _moneyPop.Modulate = new Color(GoldColor.R, GoldColor.G, GoldColor.B, 1f);
+        _moneyPop.Visible = true;
+
+        _moneyPopTween = CreateTween();
+        _moneyPopTween.TweenProperty(_moneyPop, "position:y", 1.4f, 0.7f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        _moneyPopTween.Parallel().TweenProperty(_moneyPop, "modulate:a", 0f, 0.7f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+        _moneyPopTween.TweenCallback(Callable.From(() =>
+        {
+            if (IsInstanceValid(_moneyPop)) _moneyPop.Visible = false;
+        }));
     }
 
     private void PlayCaptureBurst(HexCoord coord, float delay = 0f)
