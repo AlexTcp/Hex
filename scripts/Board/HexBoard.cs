@@ -44,6 +44,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     private const float PieceY = 0.35f;
     private const float RingY = 0.09f;
     private const int CrackGraceActions = 2;   // player actions between crack and collapse
+    private const int StandoffActions = 16;    // capture-free terminal actions before adjudication
 
     [Signal] public delegate void MoneyChangedEventHandler(int money);
     [Signal] public delegate void ScoreChangedEventHandler(int score);
@@ -77,6 +78,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     private int _lockTurnsLeft = 0;
     private bool _firstCaptureDone = false;  // Tax Collector
     private bool _mercyUsed = false;         // Mercy Charter
+    private int _stagnantActions = 0;        // actions since the last piece death
     private bool _echoUsed = false;          // Bishop Echo
     private bool _royalGuardUsed = false;    // Royal Guard
     private readonly HashSet<HexCoord> _shieldConsumed = new();
@@ -382,6 +384,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _lockTurnsLeft = 0;
         _firstCaptureDone = false;
         _mercyUsed = false;
+        _stagnantActions = 0;
         _echoUsed = false;
         _royalGuardUsed = false;
         _stateStamp++;
@@ -732,6 +735,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         SpawnPiece(kind, PieceSide.Player, coord);
         PlayLandingRing(coord, false);
         Haptics.Tap(15);
+        PromoteStrandedPawns();
 
         if (_run.TileUpgrades.TryGetValue(coord, out var up) && up == TileUpgradeKind.Blessed)
         {
@@ -754,6 +758,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         bool captured = TryCapturePlayerMove(mover, from, dest);
         PlayLandingRing(dest, captured);
         Haptics.Tap(captured ? 40 : 15);
+        PromoteStrandedPawns();
 
         if (CheckBattleEnd()) return;
         AfterPlayerAction();
@@ -840,11 +845,48 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     private void PromotePawn(BattlePiece pawn)
     {
-        PieceKind[] options = { PieceKind.Knight, PieceKind.Rook, PieceKind.Bishop };
-        pawn.Kind = options[_rng.Next(options.Length)];
+        pawn.Kind = PickPromotionKind(pawn);
         if (IsInstanceValid(pawn.Node)) pawn.Node.Mesh = PieceVisuals.MeshFor(pawn.Kind);
-        EmitSignal(SignalName.StatusNote, $"PROMOTED: {PieceCatalog.NameOf(pawn.Kind).ToUpperInvariant()}");
-        if (_run.Has(GambitKind.PawnAmbition)) AddMoney(3);
+        bool player = pawn.Side == PieceSide.Player;
+        EmitSignal(SignalName.StatusNote, player
+            ? $"PROMOTED: {PieceCatalog.NameOf(pawn.Kind).ToUpperInvariant()}"
+            : $"ENEMY PROMOTED: {PieceCatalog.NameOf(pawn.Kind).ToUpperInvariant()}");
+        if (player && _run != null && _run.Has(GambitKind.PawnAmbition)) AddMoney(3);
+    }
+
+    // Prefer a promotion kind that can actually move from this tile — a knight
+    // on a collapsed radius-1 board has no legal leaps, and promoting into an
+    // immobile piece would re-strand it.
+    private PieceKind PickPromotionKind(BattlePiece pawn)
+    {
+        PieceKind[] options = { PieceKind.Knight, PieceKind.Rook, PieceKind.Bishop };
+        var pick = options[_rng.Next(options.Length)];
+        PieceRules.LegalMoves(pick, pawn.Side, pawn.Coord, this, _aiMoves);
+        if (_aiMoves.Count > 0) return pick;
+        for (int i = 0; i < options.Length; i++)
+        {
+            PieceRules.LegalMoves(options[i], pawn.Side, pawn.Coord, this, _aiMoves);
+            if (_aiMoves.Count > 0) return options[i];
+        }
+        return PieceKind.Rook;
+    }
+
+    // A pawn whose every forward hex has left the board can never move again.
+    // Promote it on the spot (standard chess semantics, both sides) — without
+    // this, stuck pawns litter collapsed endgames and can make the last enemy
+    // uncapturable, leaving the battle unresolvable.
+    private void PromoteStrandedPawns()
+    {
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var p = _pieces[i];
+            if (!p.Alive || p.Kind != PieceKind.Pawn) continue;
+            var dirs = p.Side == PieceSide.Player ? PieceRules.PlayerPawnDirs : PieceRules.EnemyPawnDirs;
+            bool anyForwardOnBoard = false;
+            for (int d = 0; d < dirs.Length; d++)
+                if (_active.Contains(p.Coord + dirs[d])) { anyForwardOnBoard = true; break; }
+            if (!anyForwardOnBoard) PromotePawn(p);
+        }
     }
 
     private void TryBishopEcho(BattlePiece bishop, HexCoord from, HexCoord dest)
@@ -870,22 +912,75 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     private void AfterPlayerAction()
     {
-        _stateStamp++;
-        _cacheStamp = -1;
-
-        if (_lockTurnsLeft > 0 && --_lockTurnsLeft == 0)
+        // The player can be left with no legal move and no possible deploy
+        // (e.g. a lone pawn whose forward hexes left the active area). The
+        // crumble only ticks on player actions, so without a pass rule the
+        // battle would freeze forever. Auto-pass until an action opens up
+        // (enemy movement or a collapse), with a paralysis guard so two
+        // mutually stuck sides still resolve instead of looping.
+        for (int pass = 0; ; pass++)
         {
-            _locked.Clear();
-            RefreshAllTileVisuals();
+            _stateStamp++;
+            _cacheStamp = -1;
+
+            if (_lockTurnsLeft > 0 && --_lockTurnsLeft == 0)
+            {
+                _locked.Clear();
+                RefreshAllTileVisuals();
+            }
+
+            EnemyAct();
+            if (CheckBattleEnd()) return;
+
+            TickCrumble();
+            if (CheckBattleEnd()) return;
+
+            // Enemy arrivals and collapses can strand pawns; promote them now
+            // so the next selection's danger marking sees their real threat.
+            PromoteStrandedPawns();
+
+            EmitArmyCounts();
+
+            // Once the crumble is spent, a capture-free stretch means the
+            // position can (or will) never resolve — adjudicate it.
+            if (_outerRadius <= 1 && _cracked.Count == 0 && _crumbleTimer == 0
+                && ++_stagnantActions >= StandoffActions)
+            {
+                ResolveStandoff();
+                return;
+            }
+
+            if (PlayerHasAnyAction()) return;
+            if (pass >= 64)
+            {
+                _running = false;
+                EndSelect();
+                SetThreat(false);
+                EmitSignal(SignalName.StatusNote, "STALEMATE");
+                EmitSignal(SignalName.BattleLost);
+                return;
+            }
+            EmitSignal(SignalName.StatusNote, "NO MOVES — TURN PASSES");
         }
+    }
 
-        EnemyAct();
-        if (CheckBattleEnd()) return;
-
-        TickCrumble();
-        if (CheckBattleEnd()) return;
-
-        EmitArmyCounts();
+    // True when the player can do something this turn: any piece with a legal
+    // move, or a reserve piece with an empty playable tile to deploy onto.
+    private bool PlayerHasAnyAction()
+    {
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var p = _pieces[i];
+            if (!p.Alive || p.Side != PieceSide.Player) continue;
+            PieceRules.LegalMoves(p.Kind, PieceSide.Player, p.Coord, this, _aiMoves);
+            if (_aiMoves.Count > 0) return true;
+        }
+        if (_run != null && _run.Reserve.Count > 0)
+        {
+            foreach (var c in _active)
+                if (IsPlayable(c) && !_occupied.ContainsKey(c)) return true;
+        }
+        return false;
     }
 
     // Exactly one enemy piece acts per player action (chess-like alternation):
@@ -987,6 +1082,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     // may be saved once per battle by the Mercy Charter (returns to reserve).
     private void KillPiece(BattlePiece piece, bool playerLossCounts)
     {
+        _stagnantActions = 0;
         piece.Alive = false;
         _pieces.Remove(piece);
         // Identity check: on a player capture the mover has already claimed the
@@ -1085,35 +1181,72 @@ public partial class HexBoard : Node3D, IBattleQuery
     {
         if (!_running) return true;
 
-        if (CountSide(PieceSide.Enemy) == 0)
+        // Loss is checked first: when one collapse wipes both armies at once,
+        // a "win" here would hand the shop an empty army and the next battle
+        // would start with nothing to move and hang forever.
+        if (CountSide(PieceSide.Player) == 0 && (_run == null || _run.Reserve.Count == 0))
         {
-            _running = false;
-            EndSelect();
-            AddScore(250 * _run.Battle);
-            AddMoney(4 + _run.Battle);
-
-            // The army going forward is whoever survived, in board order.
-            _run.Army.Clear();
-            for (int i = 0; i < _pieces.Count; i++)
-                if (_pieces[i].Alive && _pieces[i].Side == PieceSide.Player)
-                    _run.Army.Add(_pieces[i].Kind);
-
-            _run.Battle++;
-            SetThreat(false);
-            EmitSignal(SignalName.BattleWon);
+            LoseBattle();
             return true;
         }
 
-        if (CountSide(PieceSide.Player) == 0 && (_run == null || _run.Reserve.Count == 0))
+        if (CountSide(PieceSide.Enemy) == 0)
         {
-            _running = false;
-            EndSelect();
-            SetThreat(false);
-            EmitSignal(SignalName.BattleLost);
+            WinBattle();
             return true;
         }
 
         return false;
+    }
+
+    private void WinBattle()
+    {
+        _running = false;
+        EndSelect();
+        AddScore(250 * _run.Battle);
+        AddMoney(4 + _run.Battle);
+
+        // The army going forward is whoever survived, in board order.
+        _run.Army.Clear();
+        for (int i = 0; i < _pieces.Count; i++)
+            if (_pieces[i].Alive && _pieces[i].Side == PieceSide.Player)
+                _run.Army.Add(_pieces[i].Kind);
+
+        _run.Battle++;
+        SetThreat(false);
+        EmitSignal(SignalName.BattleWon);
+    }
+
+    private void LoseBattle()
+    {
+        _running = false;
+        EndSelect();
+        SetThreat(false);
+        EmitSignal(SignalName.BattleLost);
+    }
+
+    // Terminal-board standoff: the crumble is spent and no piece has been
+    // captured for a long stretch — some endgames can never resolve by play
+    // (a bishop can never attack an adjacent hex, so bishop-vs-bishop on the
+    // collapsed 7-tile board is mutually uncapturable). Adjudicate by
+    // remaining force, reserve included; the player wins ties.
+    private void ResolveStandoff()
+    {
+        int player = 0, enemy = 0;
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            var p = _pieces[i];
+            if (!p.Alive) continue;
+            if (p.Side == PieceSide.Player) player += PieceCatalog.ValueOf(p.Kind);
+            else enemy += PieceCatalog.ValueOf(p.Kind);
+        }
+        if (_run != null)
+            for (int i = 0; i < _run.Reserve.Count; i++)
+                player += PieceCatalog.ValueOf(_run.Reserve[i]);
+
+        EmitSignal(SignalName.StatusNote, "STANDOFF");
+        if (player >= enemy) WinBattle();
+        else LoseBattle();
     }
 
     // ----- Scoring / money -------------------------------------------------------

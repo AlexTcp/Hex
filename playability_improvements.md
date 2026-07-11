@@ -1,0 +1,40 @@
+# Playability Improvements — Worklog
+
+_Started: 2026-07-10_
+
+Loop driven by `/improve`. Bar: "is this game playable and getting better?"
+Verification: `dotnet build Hex.csproj` + headless boot of `scenes/game.tscn` +
+the autoplay bot (`dev/autoplay.tscn`, added in Round 1) which plays full runs
+bot-style and exits non-zero on crash/softlock/inconsistency.
+
+Godot binary used: `C:\Users\AlexT\Downloads\Godot_v4.6.2-stable_mono_win64\Godot_v4.6.2-stable_mono_win64_console.exe`
+
+## Round 1
+
+- [x] **Headless autoplay harness** — `dev/autoplay.tscn`, `scripts/Dev/AutoPlayDriver.cs`, `scripts/Board/HexBoard.Debug.cs`.
+      Observed problem: the game is tap-driven; nothing can exercise a full run headlessly, so
+      crashes/softlocks in battle resolution are invisible until manual play. Done: `#if DEBUG`
+      tap/inspection hooks on HexBoard + a bot Node that plays N complete runs (battles, shop
+      purchases, deploys) synchronously through the real OnTileTapped input path. Danger-aware
+      move scoring (safe captures > captures > safe approach). Non-zero exit on failure.
+      Usage: `godot --headless --path . res://dev/autoplay.tscn -- runs=100`.
+- [x] **Fix no-legal-action softlock** — `HexBoard.AfterPlayerAction` now auto-passes
+      ("NO MOVES — TURN PASSES") while the player has no legal move and no possible deploy,
+      with a 64-pass paralysis guard ending in STALEMATE loss. `PlayerHasAnyAction()` added.
+- [x] **Fix mutual-wipe zombie state** (found by harness) — when one ring collapse killed the
+      last enemy AND the last player piece, the win branch ran first, rebuilding an EMPTY army;
+      the next battle then started with no player pieces and hung forever. `CheckBattleEnd`
+      now checks the loss condition first; win/loss refactored into `WinBattle`/`LoseBattle`.
+- [x] **Fix unresolvable endgames** (found by harness) — bishop-vs-bishop on the collapsed
+      radius-1 board is mutually uncapturable (bishops never attack adjacent hexes) → battles
+      that could never end. Two mechanics added: (a) stranded-pawn promotion — a pawn whose
+      every forward hex left the board promotes on the spot, both sides, picking a kind that
+      can actually move from that tile; (b) STANDOFF adjudication — once the crumble is spent
+      and 16 actions pass with no piece death, the battle resolves by remaining force
+      (reserve counts, player wins ties).
+- [x] **Verified** — `dotnet build` clean; 100 bot runs: 0 failures, exit 0 (1 bot victory,
+      99 defeats); main scene headless boot clean.
+
+**Balance note for a later round:** defeat histogram over 99 bot defeats peaks hard at
+battle 4 (first boss, Lockmaker): 32/99. The bot is weaker than a human, but watch the
+first-boss difficulty cliff.
