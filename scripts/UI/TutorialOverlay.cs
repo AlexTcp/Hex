@@ -25,7 +25,7 @@ public partial class TutorialOverlay : Control
     private static readonly (string Title, string Body, bool Danger)[] Steps =
     {
         ("Command your army", "Tap one of your ivory pieces to see its legal moves. Land on a black piece to capture it — clear them all to win the battle.", false),
-        ("Earn & spend", "Captures pay money. Between battles, spend it at the shop on new pieces, rule-bending Gambits, and permanent tile upgrades.", false),
+        ("Earn & spend", "Captures pay money — and pieces you lose are gone for good. Between battles, restock your army at the shop, and add rule-bending Gambits and tile upgrades.", false),
         ("Mind the board", "One enemy strikes back after each of your moves — RED tiles warn where you'd be captured. And the board crumbles from the outside in: don't linger on the rim.", true),
     };
 

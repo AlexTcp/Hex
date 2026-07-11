@@ -72,3 +72,21 @@ first-boss difficulty cliff.
       then locks nothing). Verified: 150 autoplay runs, 0 failures.
 - [x] **Fix stale project description** — `project.godot` now describes the chess-battle
       roguelike instead of the old token hunt.
+
+(Untracked `scripts/DebugLog.cs.bak` matches no tracked revision — left in place, just kept
+out of commits.)
+
+## Round 4
+
+- [x] **Instrument the difficulty curve** — AutoPlayDriver now prints per-battle
+      reached/cleared/clear%/avg-army after every sweep.
+- [x] **Balance verdict: NO game change needed (data)** — the apparent battle-4 cliff was a
+      bot artifact. With piece-first shopping (mirroring the real 2-offer + $2-reroll shop)
+      and eager reserve deploys, 300 runs → 27% win rate with a healthy curve:
+      b1–3 ≈100%, boss b4 94%, mid 97→82%, finale 68%. Old bot (buys ≤1 piece, hoards
+      reserve) starved to 1% wins with armies shrinking 3.5→2. The economy is fine; army
+      upkeep is the core strategy.
+- [x] **Teach army permadeath in the tutorial** — the game never said losses are permanent
+      across battles (the mechanic the curve hinges on). Tutorial step 2 now reads
+      "pieces you lose are gone for good — restock your army at the shop".
+- [x] **Verified** — build clean; 300 instrumented runs 0 failures, exit 0.

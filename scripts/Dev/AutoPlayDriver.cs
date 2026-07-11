@@ -39,6 +39,11 @@ public partial class AutoPlayDriver : Node
     private bool _won, _lost;
     private int _fails;
 
+    // Difficulty-curve stats, indexed by battle number (1..FinalBattle).
+    private readonly int[] _reached = new int[RunState.FinalBattle + 2];
+    private readonly int[] _cleared = new int[RunState.FinalBattle + 2];
+    private readonly int[] _armySum = new int[RunState.FinalBattle + 2];
+
     public override void _Ready()
     {
         _board = new HexBoard();
@@ -64,6 +69,12 @@ public partial class AutoPlayDriver : Node
         }
 
         GD.Print($"[AUTOPLAY] done: {runs} runs, {victories} victories, {defeats} defeats, {_fails} failures");
+        GD.Print("[AUTOPLAY] battle | reached | cleared | clear% | avg army");
+        for (int b = 1; b <= RunState.FinalBattle; b++)
+        {
+            if (_reached[b] == 0) continue;
+            GD.Print($"[AUTOPLAY]   {b,2}   |  {_reached[b],4}   |  {_cleared[b],4}   |  {100 * _cleared[b] / _reached[b],3}%  |  {(float)_armySum[b] / _reached[b]:F1}");
+        }
         GetTree().Quit(_fails == 0 ? 0 : 1);
     }
 
@@ -73,6 +84,10 @@ public partial class AutoPlayDriver : Node
         var run = RunState.NewRun(_rng);
         while (true)
         {
+            int battleNo = Math.Min(run.Battle, RunState.FinalBattle + 1);
+            _reached[battleNo]++;
+            _armySum[battleNo] += run.Army.Count;
+
             _won = _lost = false;
             _board.StartBattle(run);
             int actions = 0;
@@ -96,6 +111,7 @@ public partial class AutoPlayDriver : Node
                 GD.Print($"[AUTOPLAY] run {index}: defeated in battle {run.Battle} (score {run.Score})");
                 return false;
             }
+            _cleared[battleNo]++;
             if (run.Battle > RunState.FinalBattle)
             {
                 GD.Print($"[AUTOPLAY] run {index}: VICTORY (score {run.Score}, ${run.Money})");
@@ -117,22 +133,31 @@ public partial class AutoPlayDriver : Node
         return result != BotActionResult.NoAction;
     }
 
-    // Mirrors ShopScreen's purchase effects so gambit / tile-upgrade / army
-    // growth paths all get exercised across runs.
+    // Mirrors the real shop's offer structure (two rolled piece offers per
+    // visit, $2 reroll, one gambit, one tile) but shops like a survival-minded
+    // player: grow the army first, spend leftovers on gambits/tiles.
     private void SimulateShop(RunState run)
     {
-        if (_rng.Next(2) == 0)
+        const int rerollPrice = 2;
+        for (int visit = 0; visit < 4; visit++)
         {
-            var kind = (PieceKind)_rng.Next(6);
-            int price = PieceCatalog.Info(kind).Price;
-            if (run.Money >= price)
+            for (int i = 0; i < 2; i++)
             {
-                run.Money -= price;
-                if (run.Army.Count < RunState.ArmyCap) run.Army.Add(kind);
-                else run.Reserve.Add(kind);
+                var kind = RollPieceOffer(run);
+                int price = PieceCatalog.Info(kind).Price;
+                if (run.Army.Count + run.Reserve.Count < 7 && run.Money >= price)
+                {
+                    run.Money -= price;
+                    if (run.Army.Count < RunState.ArmyCap) run.Army.Add(kind);
+                    else run.Reserve.Add(kind);
+                }
             }
+            // Reroll only while flush and still short on pieces.
+            if (run.Army.Count + run.Reserve.Count >= 6 || run.Money < rerollPrice + 5) break;
+            run.Money -= rerollPrice;
         }
-        if (_rng.Next(2) == 0)
+
+        if (_rng.Next(5) < 2)
         {
             foreach (var g in GambitCatalog.All)
             {
@@ -142,7 +167,7 @@ public partial class AutoPlayDriver : Node
                 break;
             }
         }
-        if (_rng.Next(2) == 0)
+        if (_rng.Next(5) < 2)
         {
             var up = TileUpgradeCatalog.All[_rng.Next(TileUpgradeCatalog.All.Length)];
             var candidates = new List<HexCoord>();
@@ -154,6 +179,19 @@ public partial class AutoPlayDriver : Node
                 run.TileUpgrades[candidates[_rng.Next(candidates.Count)]] = up.Kind;
             }
         }
+    }
+
+    // Same gating as ShopScreen.RollPieceOffer: uniform over kinds, Queen
+    // withheld before battle 6.
+    private PieceKind RollPieceOffer(RunState run)
+    {
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            var kind = (PieceKind)_rng.Next(6);
+            if (kind == PieceKind.Queen && run.Battle < 6) continue;
+            return kind;
+        }
+        return PieceKind.Pawn;
     }
 
     private void Fail(string msg)

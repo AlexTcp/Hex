@@ -37,13 +37,17 @@ public static class BotBrain
     public static BotActionResult TakeOneAction(HexBoard board, RunState run, Random rng,
         bool suicidal = false)
     {
-        if (!suicidal && run.Reserve.Count > 0 && rng.Next(4) == 0 && TryDeploy(board, run, rng))
-            return BotActionResult.Deployed;
-
         Mine.Clear();
         foreach (var p in board.DebugPieces)
             if (p.Alive && p.Side == PieceSide.Player) Mine.Add(p);
         Shuffle(Mine, rng);
+
+        // Reinforce eagerly when the board presence is thin; otherwise trickle
+        // the reserve in occasionally.
+        if (!suicidal && run.Reserve.Count > 0
+            && (Mine.Count < 4 || rng.Next(6) == 0)
+            && TryDeploy(board, run, rng))
+            return BotActionResult.Deployed;
 
         // Score every legal (piece, destination) pair the way a human reads the
         // board: safe captures > unsafe captures (by victim value), then safe
