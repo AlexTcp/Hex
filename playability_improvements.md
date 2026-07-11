@@ -155,3 +155,12 @@ out of commits.)
       ("army Pa Pa Kn Ro · reserve Bi") instead of bare counts.
 - [x] **Verified** — build clean; import clean; 60 autoplay runs 0 failures (21 wins);
       UI-flow PASS.
+
+## Round 11
+
+- [x] **Inspect enemy reach** — tapping an enemy piece paints its legal moves cold steel
+      blue (read-only; next tap clears; a capture offer on that tile still takes priority).
+      Uses the AI scratch buffer so the selection memoization stays intact.
+- [x] **Run stats on Game Over** — CapturesMade / PiecesLost (mercy saves excluded) /
+      MoneyEarned tallied on RunState and shown as three new result rows.
+- [x] **Verified** — build clean; 80 autoplay runs 0 failures (21 wins); UI-flow PASS.

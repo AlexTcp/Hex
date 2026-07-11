@@ -171,7 +171,7 @@ public partial class ScreenManager : Node
         {
             // The crown is won. Commit records and present the victory.
             bool newBest = _session.CommitRun();
-            _gameOver.Present(victory: true, battle: RunState.FinalBattle, score: run.Score, newBest: newBest);
+            _gameOver.Present(victory: true, battle: RunState.FinalBattle, score: run.Score, newBest: newBest, run: run);
             GoState(AppState.GameOver, _gameOver, 0.6f, 0.4f);
             return;
         }
@@ -186,7 +186,7 @@ public partial class ScreenManager : Node
         SetDangerVignette(false);
         var run = _session.CurrentRun;
         bool newBest = _session.CommitRun();
-        _gameOver.Present(victory: false, battle: run.Battle, score: run.Score, newBest: newBest);
+        _gameOver.Present(victory: false, battle: run.Battle, score: run.Score, newBest: newBest, run: run);
         Shake();
         GoState(AppState.GameOver, _gameOver, 0.6f, 0.3f);
     }

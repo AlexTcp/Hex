@@ -31,6 +31,11 @@ public sealed class RunState
     public int Score;
     public int Battle = 1;                  // 1-based; the battle about to be (or being) fought
 
+    // Run-lifetime tallies for the end screen (not persisted).
+    public int CapturesMade;
+    public int PiecesLost;
+    public int MoneyEarned;
+
     public readonly List<PieceKind> Army = new();
     public readonly List<PieceKind> Reserve = new();
     public readonly HashSet<GambitKind> Gambits = new();

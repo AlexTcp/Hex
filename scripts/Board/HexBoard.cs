@@ -169,6 +169,8 @@ public partial class HexBoard : Node3D, IBattleQuery
     private static readonly StandardMaterial3D HighlightMaterialShared = Emissive(GoldColor, 0.55f);
     private static readonly StandardMaterial3D CaptureHighlightMaterialShared = Emissive(CopperColor, 0.7f);
     private static readonly StandardMaterial3D DangerHighlightMaterialShared = Emissive(DangerColor, 0.7f);
+    // Read-only "where could this enemy strike" paint — cold steel blue.
+    private static readonly StandardMaterial3D EnemyReachMaterialShared = Emissive(new Color(0.36f, 0.56f, 0.85f), 0.5f);
 
     // Landing shockwave ring.
     private static readonly Color RingGold = new(0.890f, 0.698f, 0.235f, 0.8f);
@@ -584,6 +586,16 @@ public partial class HexBoard : Node3D, IBattleQuery
             return;
         }
 
+        // Tapping an enemy piece shows its reach (read-only, steel blue) —
+        // unless a move to its tile is currently offered (capture beats
+        // inspection; the un-highlighted case falls through to EndSelect).
+        if (piece != null && piece.Side == PieceSide.Enemy
+            && !(_selPiece != null && _highlighted.Contains(coord)))
+        {
+            ShowEnemyReach(piece);
+            return;
+        }
+
         if (_selPiece != null && _highlighted.Contains(coord))
         {
             var mover = _selPiece;
@@ -640,6 +652,24 @@ public partial class HexBoard : Node3D, IBattleQuery
         // tap reads as dead — say why.
         if (_movesBuffer.Count == 0)
             EmitSignal(SignalName.StatusNote, "NO LEGAL MOVES");
+    }
+
+    // Paint an enemy's legal destinations steel blue. Purely informational —
+    // nothing is selected, so the next tap anywhere clears it. Uses the AI
+    // scratch buffer so the memoized selection cache stays intact.
+    private void ShowEnemyReach(BattlePiece enemy)
+    {
+        EndSelect();
+        PieceRules.LegalMoves(enemy.Kind, PieceSide.Enemy, enemy.Coord, this, _aiMoves);
+        for (int i = 0; i < _aiMoves.Count; i++)
+        {
+            var dest = _aiMoves[i];
+            if (!_tiles.TryGetValue(dest, out var tile)) continue;
+            _highlighted.Add(dest);
+            tile.Mesh.MaterialOverride = EnemyReachMaterialShared;
+        }
+        Sfx.Play("select", -14f);
+        Haptics.Tap(8);
     }
 
     private void EndSelect()
@@ -858,6 +888,7 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         AddMoney(money);
         AddScore(PieceCatalog.ValueOf(target.Kind) * 100);
+        _run.CapturesMade++;
         ShowMoneyPop(dest, money);
         KillPiece(target, playerLossCounts: false);
         PlayCaptureBurst(dest);
@@ -1144,12 +1175,18 @@ public partial class HexBoard : Node3D, IBattleQuery
             _occupied.Remove(piece.Coord);
         if (_selPiece == piece) EndSelect();
 
-        if (playerLossCounts && piece.Side == PieceSide.Player
-            && _run != null && _run.Has(GambitKind.MercyCharter) && !_mercyUsed)
+        if (playerLossCounts && piece.Side == PieceSide.Player && _run != null)
         {
-            _mercyUsed = true;
-            _run.Reserve.Add(piece.Kind);
-            EmitSignal(SignalName.StatusNote, "MERCY: TO RESERVE");
+            if (_run.Has(GambitKind.MercyCharter) && !_mercyUsed)
+            {
+                _mercyUsed = true;
+                _run.Reserve.Add(piece.Kind);
+                EmitSignal(SignalName.StatusNote, "MERCY: TO RESERVE");
+            }
+            else
+            {
+                _run.PiecesLost++;
+            }
         }
 
         var node = piece.Node;
@@ -1326,6 +1363,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     {
         if (_run == null || delta == 0) return;
         _run.Money += delta;
+        if (delta > 0) _run.MoneyEarned += delta;
         EmitSignal(SignalName.MoneyChanged, _run.Money);
     }
 

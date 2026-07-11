@@ -14,6 +14,7 @@
 
 using System;
 using Godot;
+using HexGame.Chess;
 
 namespace HexGame.UI;
 
@@ -26,6 +27,9 @@ public partial class GameOverScreen : Control
     private Label _subtitle;
     private Label _battleValue;
     private Label _scoreValue;
+    private Label _capturesValue;
+    private Label _lostValue;
+    private Label _earnedValue;
     private Control _newBestChip;
     private Tween _titleTween;
 
@@ -70,6 +74,9 @@ public partial class GameOverScreen : Control
 
         v.AddChild(ResultRow("BATTLE REACHED", out _battleValue));
         v.AddChild(ResultRow("SCORE", out _scoreValue));
+        v.AddChild(ResultRow("CAPTURES", out _capturesValue));
+        v.AddChild(ResultRow("PIECES LOST", out _lostValue));
+        v.AddChild(ResultRow("MONEY EARNED", out _earnedValue));
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
 
         var retry = UiTheme.PrimaryButton("NEW RUN");
@@ -92,7 +99,7 @@ public partial class GameOverScreen : Control
         return row;
     }
 
-    public void Present(bool victory, int battle, int score, bool newBest)
+    public void Present(bool victory, int battle, int score, bool newBest, RunState run = null)
     {
         if (_title != null)
         {
@@ -103,6 +110,9 @@ public partial class GameOverScreen : Control
             _subtitle.Text = victory ? "Every battle won. The board is yours." : "The last piece has been taken.";
         if (_battleValue != null) _battleValue.Text = battle.ToString();
         if (_scoreValue != null) _scoreValue.Text = score.ToString();
+        if (_capturesValue != null) _capturesValue.Text = run?.CapturesMade.ToString() ?? "—";
+        if (_lostValue != null) _lostValue.Text = run?.PiecesLost.ToString() ?? "—";
+        if (_earnedValue != null) _earnedValue.Text = run != null ? $"${run.MoneyEarned}" : "—";
         if (_newBestChip != null) _newBestChip.Visible = newBest;
 
         // One-time title fade/scale (no bounce — the moment should feel weighty).
