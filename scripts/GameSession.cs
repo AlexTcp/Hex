@@ -34,6 +34,7 @@ public partial class GameSession : Node
     // ----- Persisted meta-progression --------------------------------------
     public int BestBattle { get; private set; } = 0;
     public int HighScore { get; private set; } = 0;
+    public int Crowns { get; private set; } = 0;      // runs won (battle 12 cleared)
     public bool TutorialSeen { get; private set; } = false;
 
     public override void _Ready()
@@ -67,13 +68,14 @@ public partial class GameSession : Node
     // Fold the just-ended run into the persistent records and write to disk.
     // Returns true if a new global record was set so the end screen can show a
     // "NEW BEST!" flourish. `battlesCleared` is the number of battles won.
-    public bool CommitRun()
+    public bool CommitRun(bool wonRun = false)
     {
         if (CurrentRun == null) return false;
         int battlesCleared = CurrentRun.Battle - 1;
         bool newGlobalRecord = false;
         if (battlesCleared > BestBattle) { BestBattle = battlesCleared; newGlobalRecord = true; }
         if (CurrentRun.Score > HighScore) { HighScore = CurrentRun.Score; newGlobalRecord = true; }
+        if (wonRun) Crowns++;
         Save();
         return newGlobalRecord;
     }
@@ -93,6 +95,7 @@ public partial class GameSession : Node
 
         BestBattle = (int)cfg.GetValue(Section, "best_battle", 0);
         HighScore = (int)cfg.GetValue(Section, "high_score", 0);
+        Crowns = (int)cfg.GetValue(Section, "crowns", 0);
         TutorialSeen = (bool)cfg.GetValue(Section, "tutorial_seen", false);
     }
 
@@ -101,6 +104,7 @@ public partial class GameSession : Node
         var cfg = new ConfigFile();
         cfg.SetValue(Section, "best_battle", BestBattle);
         cfg.SetValue(Section, "high_score", HighScore);
+        cfg.SetValue(Section, "crowns", Crowns);
         cfg.SetValue(Section, "tutorial_seen", TutorialSeen);
         cfg.Save(SavePath);
     }

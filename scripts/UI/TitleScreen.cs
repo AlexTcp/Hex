@@ -24,6 +24,8 @@ public partial class TitleScreen : Control
     private readonly Action _onHowToPlay;
     private Label _bestWave;
     private Label _highScore;
+    private Label _crowns;
+    private PanelContainer _crownsChip;
 
     public TitleScreen(GameSession session, Action onPlay, Action onHowToPlay)
     {
@@ -77,6 +79,9 @@ public partial class TitleScreen : Control
         chips.MouseFilter = MouseFilterEnum.Ignore;
         chips.AddChild(StatChip("BEST BATTLE", out _bestWave));
         chips.AddChild(StatChip("HIGH SCORE", out _highScore));
+        _crownsChip = StatChip("CROWNS", out _crowns);
+        _crownsChip.Visible = false;   // earned display: only after a first victory
+        chips.AddChild(_crownsChip);
         AddChild(chips);
     }
 
@@ -97,5 +102,10 @@ public partial class TitleScreen : Control
     {
         if (_bestWave != null) _bestWave.Text = _session.BestBattle > 0 ? _session.BestBattle.ToString() : "—";
         if (_highScore != null) _highScore.Text = _session.HighScore.ToString();
+        if (_crownsChip != null)
+        {
+            _crownsChip.Visible = _session.Crowns > 0;
+            if (_crowns != null) _crowns.Text = _session.Crowns.ToString();
+        }
     }
 }

@@ -170,7 +170,7 @@ public partial class ScreenManager : Node
         if (run.Battle > RunState.FinalBattle)
         {
             // The crown is won. Commit records and present the victory.
-            bool newBest = _session.CommitRun();
+            bool newBest = _session.CommitRun(wonRun: true);
             _gameOver.Present(victory: true, battle: RunState.FinalBattle, score: run.Score, newBest: newBest, run: run);
             GoState(AppState.GameOver, _gameOver, 0.6f, 0.4f);
             return;

@@ -164,3 +164,13 @@ out of commits.)
 - [x] **Run stats on Game Over** — CapturesMade / PiecesLost (mercy saves excluded) /
       MoneyEarned tallied on RunState and shown as three new result rows.
 - [x] **Verified** — build clean; 80 autoplay runs 0 failures (21 wins); UI-flow PASS.
+
+## Round 12
+
+- [x] **Persist victory count ("Crowns")** — `CommitRun(wonRun)` increments a persisted
+      `crowns` counter; the title shows a CROWNS chip once the first run is won.
+- [x] **Refresh CLAUDE.md** — documented the three termination guarantees (auto-pass,
+      stranded promotion, standoff), loss-before-win ordering, finale Queen, enemy-reach
+      inspection, staggered enemy visuals, money pops, Sfx autoload + settings.cfg split,
+      harness commands with reference difficulty curve, audio regeneration, new layout rows.
+- [x] **Verified** — build clean; 60 autoplay runs 0 failures (19 wins); UI-flow PASS.
