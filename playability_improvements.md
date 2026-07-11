@@ -122,3 +122,14 @@ out of commits.)
 - [x] **Verified** — build clean; assets imported (`--headless --import`); 100 autoplay runs
       0 failures; UI-flow PASS; boot clean. (Pre-existing exit-time "resources still in use"
       warning noted — static shared resources by design, exit-only, not a play issue.)
+
+## Round 8
+
+- [x] **UI click sounds** — `UiTheme.MakeButton` wires every factory button; the two
+      hand-rolled Hud buttons (pause, reserve bar) wired individually.
+- [x] **Sound toggle** — `Sfx.Enabled` persisted to `user://settings.cfg` (separate file so
+      GameSession's whole-file save can't clobber it); "Sound: On/Off" button in the
+      settings drawer with audible-on-enable confirmation.
+- [x] **Teach reserves & bosses** — 4th tutorial step covers deploy costs-your-action and
+      the every-4th-battle boss rule.
+- [x] **Verified** — build clean; 60 autoplay runs 0 failures (17 wins); UI-flow PASS.

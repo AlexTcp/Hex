@@ -16,6 +16,7 @@
 #nullable enable
 using Godot;
 using System;
+using HexGame;
 
 public partial class SettingsModal : Control
 {
@@ -91,10 +92,21 @@ public partial class SettingsModal : Control
         resumeBtn.Pressed += Close;
         content.AddChild(resumeBtn);
 
+        var soundBtn = MakeDrawerButton(SoundLabel());
+        soundBtn.Pressed += () =>
+        {
+            Sfx.SetEnabled(!Sfx.Enabled);
+            soundBtn.Text = SoundLabel();
+            Sfx.Play("select", -12f);   // audible confirmation when turning ON
+        };
+        content.AddChild(soundBtn);
+
         var logsBtn = MakeDrawerButton("Logs");
         logsBtn.Pressed += OnLogsPressed;
         content.AddChild(logsBtn);
     }
+
+    private static string SoundLabel() => Sfx.Enabled ? "Sound: On" : "Sound: Off";
 
     private static Button MakeDrawerButton(string text)
     {

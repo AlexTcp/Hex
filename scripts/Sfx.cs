@@ -22,12 +22,16 @@ namespace HexGame;
 public partial class Sfx : Node
 {
     private const int PoolSize = 6;
+    private const string SettingsPath = "user://settings.cfg";   // NOT hex.cfg — GameSession
+    private const string Section = "audio";                      // rewrites that file whole
 
     private static Sfx _instance;
 
     private readonly Dictionary<string, AudioStream> _streams = new();
     private readonly AudioStreamPlayer[] _pool = new AudioStreamPlayer[PoolSize];
     private int _next;
+
+    public static bool Enabled { get; private set; } = true;
 
     private static readonly string[] Names =
     {
@@ -48,6 +52,18 @@ public partial class Sfx : Node
             if (ResourceLoader.Exists(path))
                 _streams[name] = GD.Load<AudioStream>(path);
         }
+
+        var cfg = new ConfigFile();
+        if (cfg.Load(SettingsPath) == Error.Ok)
+            Enabled = (bool)cfg.GetValue(Section, "sound_enabled", true);
+    }
+
+    public static void SetEnabled(bool enabled)
+    {
+        Enabled = enabled;
+        var cfg = new ConfigFile();
+        cfg.SetValue(Section, "sound_enabled", enabled);
+        cfg.Save(SettingsPath);
     }
 
     public override void _ExitTree()
@@ -58,7 +74,7 @@ public partial class Sfx : Node
     public static void Play(string name, float volumeDb = 0f)
     {
         var inst = _instance;
-        if (inst == null || !inst._streams.TryGetValue(name, out var stream)) return;
+        if (inst == null || !Enabled || !inst._streams.TryGetValue(name, out var stream)) return;
 
         var p = inst._pool[inst._next];
         inst._next = (inst._next + 1) % PoolSize;

@@ -146,6 +146,7 @@ public static class UiTheme
     {
         var b = new Button { Text = text, ThemeTypeVariation = variation };
         b.CustomMinimumSize = new Vector2(0, 76);
+        b.Pressed += () => Sfx.Play("select", -12f);
         return b;
     }
 

@@ -112,7 +112,11 @@ public partial class Hud : Control
         pause.SetAnchorsPreset(LayoutPreset.TopRight);
         pause.OffsetRight = -104; pause.OffsetLeft = -168;
         pause.OffsetTop = 8; pause.OffsetBottom = 72;
-        pause.Pressed += () => _onPause?.Invoke();
+        pause.Pressed += () =>
+        {
+            Sfx.Play("select", -12f);
+            _onPause?.Invoke();
+        };
         AddChild(pause);
 
         // --- Bottom-centre: reserve bar ---
@@ -227,6 +231,7 @@ public partial class Hud : Control
             b.CustomMinimumSize = new Vector2(0, 60);
             b.Pressed += () =>
             {
+                Sfx.Play("select", -12f);
                 if (_armedIndex == idx)
                 {
                     _armedIndex = -1;
