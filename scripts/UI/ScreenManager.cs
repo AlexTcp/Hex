@@ -163,7 +163,11 @@ public partial class ScreenManager : Node
     private void OnInspectChanged(string text) => _hud.SetInspect(text);
     private void OnDeployModeChanged(bool active) => _hud.SetDeployArmed(active);
 
-    private void OnThreatChanged(bool inDanger) => SetDangerVignette(inDanger);
+    private void OnThreatChanged(bool inDanger)
+    {
+        SetDangerVignette(inDanger);
+        Sfx.SetThreatBed(inDanger);
+    }
 
     private void OnBattleWon()
     {

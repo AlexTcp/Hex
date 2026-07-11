@@ -30,13 +30,15 @@ public partial class Sfx : Node
     private readonly Dictionary<string, AudioStream> _streams = new();
     private readonly AudioStreamPlayer[] _pool = new AudioStreamPlayer[PoolSize];
     private AudioStreamPlayer _ambient;
+    private AudioStreamPlayer _threat;
+    private bool _threatOn;
     private int _next;
 
     public static bool Enabled { get; private set; } = true;
 
     private static readonly string[] Names =
     {
-        "select", "move", "capture", "coin", "crack", "collapse", "win", "lose",
+        "select", "move", "capture", "coin", "crack", "collapse", "win", "lose", "boss",
     };
 
     public override void _Ready()
@@ -59,16 +61,33 @@ public partial class Sfx : Node
             Enabled = (bool)cfg.GetValue(Section, "sound_enabled", true);
 
         // Quiet seamless room pad under everything (loop is sample-exact).
-        if (ResourceLoader.Exists("res://audio/ambient.wav")
-            && GD.Load<AudioStream>("res://audio/ambient.wav") is AudioStreamWav pad)
-        {
-            pad.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
-            pad.LoopBegin = 0;
-            pad.LoopEnd = pad.Data.Length / 2;   // 16-bit mono: 2 bytes per frame
-            _ambient = new AudioStreamPlayer { Stream = pad, VolumeDb = -16f };
-            AddChild(_ambient);
-            if (Enabled) _ambient.Play();
-        }
+        _ambient = MakeLoopingPlayer("res://audio/ambient.wav", -16f);
+        if (_ambient != null && Enabled) _ambient.Play();
+
+        // Low pulse bed that runs only while the board is cracking.
+        _threat = MakeLoopingPlayer("res://audio/threat.wav", -13f);
+    }
+
+    private AudioStreamPlayer MakeLoopingPlayer(string path, float volumeDb)
+    {
+        if (!ResourceLoader.Exists(path) || GD.Load<AudioStream>(path) is not AudioStreamWav wav)
+            return null;
+        wav.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
+        wav.LoopBegin = 0;
+        wav.LoopEnd = wav.Data.Length / 2;   // 16-bit mono: 2 bytes per frame
+        var p = new AudioStreamPlayer { Stream = wav, VolumeDb = volumeDb };
+        AddChild(p);
+        return p;
+    }
+
+    // Runs while the board is cracking; obeys the sound toggle.
+    public static void SetThreatBed(bool on)
+    {
+        var inst = _instance;
+        if (inst == null || inst._threat == null) return;
+        inst._threatOn = on;
+        if (on && Enabled && !inst._threat.Playing) inst._threat.Play();
+        else if (!on) inst._threat.Stop();
     }
 
     public static void SetEnabled(bool enabled)
@@ -78,11 +97,17 @@ public partial class Sfx : Node
         cfg.SetValue(Section, "sound_enabled", enabled);
         cfg.Save(SettingsPath);
 
-        var amb = _instance?._ambient;
-        if (amb != null)
+        var inst = _instance;
+        if (inst == null) return;
+        if (inst._ambient != null)
         {
-            if (enabled && !amb.Playing) amb.Play();
-            else if (!enabled) amb.Stop();
+            if (enabled && !inst._ambient.Playing) inst._ambient.Play();
+            else if (!enabled) inst._ambient.Stop();
+        }
+        if (inst._threat != null)
+        {
+            if (enabled && inst._threatOn && !inst._threat.Playing) inst._threat.Play();
+            else if (!enabled) inst._threat.Stop();
         }
     }
 

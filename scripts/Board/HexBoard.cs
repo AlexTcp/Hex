@@ -113,6 +113,7 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     // ----- FX (pooled) ------------------------------------------------------
     private Tween _pulseTween;
+    private Tween _dangerPulseTween;
     private MeshInstance3D _ringNode;
     private Tween _ringTween;
     private MeshInstance3D _selectRingNode;
@@ -381,8 +382,11 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         // A boss must announce itself — its rules bend invisibly otherwise.
         if (_boss != BossModifier.None)
+        {
             EmitSignal(SignalName.StatusNote,
                 $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
+            Sfx.Play("boss", -4f);
+        }
 
         // The finale's guaranteed Queen gets her own announcement (last note wins
         // the flourish; the HUD label still names the boss).
@@ -734,30 +738,38 @@ public partial class HexBoard : Node3D, IBattleQuery
         return danger;
     }
 
-    // One looped tween drives the emission of all three highlight materials in
-    // sync at zero per-tile cost.
+    // Two looped tweens drive the highlight materials at zero per-tile cost:
+    // gold/copper breathe together; the danger red pulses at DOUBLE rate so the
+    // death-tile warning is a rhythm cue, not only a colour (colour-blind safe).
     private void StartHighlightPulse()
     {
         _pulseTween?.Kill();
         var t = CreateTween().SetLoops();
-        AddPulseLeg(t, 1.5f);
-        AddPulseLeg(t, 0.7f);
+        AddPulseLeg(t, 1.5f, 0.55f);
+        AddPulseLeg(t, 0.7f, 0.55f);
         _pulseTween = t;
+
+        _dangerPulseTween?.Kill();
+        var d = CreateTween().SetLoops();
+        d.TweenProperty(DangerHighlightMaterialShared, "emission_energy_multiplier", 1.6f, 0.275f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        d.TweenProperty(DangerHighlightMaterialShared, "emission_energy_multiplier", 0.6f, 0.275f)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        _dangerPulseTween = d;
     }
 
-    private void AddPulseLeg(Tween t, float energy)
+    private void AddPulseLeg(Tween t, float energy, float dur)
     {
-        t.TweenProperty(HighlightMaterialShared, "emission_energy_multiplier", energy, 0.55f)
+        t.TweenProperty(HighlightMaterialShared, "emission_energy_multiplier", energy, dur)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-        t.Parallel().TweenProperty(CaptureHighlightMaterialShared, "emission_energy_multiplier", energy, 0.55f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-        t.Parallel().TweenProperty(DangerHighlightMaterialShared, "emission_energy_multiplier", energy, 0.55f)
+        t.Parallel().TweenProperty(CaptureHighlightMaterialShared, "emission_energy_multiplier", energy, dur)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
     }
 
     private void StopHighlightPulse()
     {
         if (_pulseTween != null) { _pulseTween.Kill(); _pulseTween = null; }
+        if (_dangerPulseTween != null) { _dangerPulseTween.Kill(); _dangerPulseTween = null; }
         HighlightMaterialShared.EmissionEnergyMultiplier = 1f;
         CaptureHighlightMaterialShared.EmissionEnergyMultiplier = 1f;
         DangerHighlightMaterialShared.EmissionEnergyMultiplier = 1f;

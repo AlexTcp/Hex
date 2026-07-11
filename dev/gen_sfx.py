@@ -142,6 +142,27 @@ l1 = sine_note(220.0, 320, amp=0.4, decay=3.5, harmonics=((1, 1.0), (2, 0.3), (3
 l2 = sine_note(155.56, 520, amp=0.42, decay=3.0, harmonics=((1, 1.0), (2, 0.3), (3, 0.1)))
 write_wav("lose", mix(l1, delayed(l2, 240)))
 
+# --- boss: low detuned-fifth entrance sting -----------------------------------
+boss = mix(
+    sine_note(65.41, 850, amp=0.42, decay=3.2, harmonics=((1, 1.0), (2, 0.35), (3, 0.12)), attack_ms=6),
+    sine_note(98.00, 850, amp=0.30, decay=3.4, harmonics=((1, 1.0), (2, 0.25)), attack_ms=6),
+    sine_note(65.91, 850, amp=0.18, decay=3.2, harmonics=((1, 1.0),), attack_ms=6),  # detune growl
+)
+write_wav("boss", boss)
+
+# --- threat: seamless low pulse bed (loops while the board cracks) -------------
+TT = 4.0
+NT = int(SR * TT)
+threat = []
+for i in range(NT):
+    t = i / SR
+    # two heartbeat-ish swells per loop; all components integer-cycle over TT
+    swell = max(0.0, math.sin(2 * math.pi * 2 * t / TT)) ** 3
+    v = math.sin(2 * math.pi * (round(52 * TT) / TT) * t) \
+        + 0.5 * math.sin(2 * math.pi * (round(78 * TT) / TT) * t + 1.2)
+    threat.append(0.4 * v * (0.25 + 0.75 * swell))
+write_wav("threat", threat)
+
 # --- ambient: seamless slate-room pad -----------------------------------------
 # Every partial and every LFO completes an integer number of cycles over the
 # loop, so the wraparound is sample-exact. Cm(add9) voicing, very quiet.
