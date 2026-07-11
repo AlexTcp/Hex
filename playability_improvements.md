@@ -310,3 +310,11 @@ out of commits.)
       dead-centre in-render.
 - [x] **Verified** — build clean; 80 autoplay runs 0 failures (31 wins); UI-flow PASS both
       windowed (shots reviewed) and headless.
+
+## Round 25
+
+- [x] **Show the collapse countdown** — while a ring is cracked the HUD chip now reads
+      "COLLAPSE IN N" (the grace period — 2 actions, 3 with Stonemason — was tracked
+      internally but invisible). `TickCrumble` emits the crack countdown through
+      CrumbleChanged's turnsLeft while cracking.
+- [x] **Verified** — build clean; 80 autoplay runs 0 failures (23 wins); UI-flow PASS.

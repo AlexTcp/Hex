@@ -1266,6 +1266,9 @@ public partial class HexBoard : Node3D, IBattleQuery
     // pieces on it die — and the next ring cracks. Radius <= 1 never crumbles.
     private void TickCrumble()
     {
+        // While a ring is cracked, turnsLeft carries the actions until it
+        // collapses so the HUD can show COLLAPSE IN N (the grace period was
+        // previously invisible).
         if (_crumbleTimer > 0)
         {
             _crumbleTimer--;
@@ -1273,6 +1276,8 @@ public partial class HexBoard : Node3D, IBattleQuery
             {
                 CrackRing(_outerRadius);
                 _crackCountdown = CrackGrace();
+                EmitSignal(SignalName.CrumbleChanged, _crackCountdown, true);
+                return;
             }
             EmitSignal(SignalName.CrumbleChanged, _crumbleTimer, _cracked.Count > 0);
             return;
@@ -1280,15 +1285,21 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         if (_cracked.Count == 0) return;
         _crackCountdown--;
-        if (_crackCountdown > 0) return;
+        if (_crackCountdown > 0)
+        {
+            EmitSignal(SignalName.CrumbleChanged, _crackCountdown, true);
+            return;
+        }
 
         CollapseCrackedRing();
         if (_outerRadius >= 2)
         {
             CrackRing(_outerRadius);
             _crackCountdown = CrackGrace();
+            EmitSignal(SignalName.CrumbleChanged, _crackCountdown, true);
+            return;
         }
-        EmitSignal(SignalName.CrumbleChanged, 0, _cracked.Count > 0);
+        EmitSignal(SignalName.CrumbleChanged, 0, false);
     }
 
     // Actions a cracked ring holds before collapsing (Stonemason buys one more).

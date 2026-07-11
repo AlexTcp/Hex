@@ -193,7 +193,7 @@ public partial class Hud : Control
         if (_crumbleLabel == null) return;
         if (cracking)
         {
-            _crumbleLabel.Text = "CRUMBLING";
+            _crumbleLabel.Text = turnsLeft > 0 ? $"COLLAPSE IN {turnsLeft}" : "CRUMBLING";
             _crumbleLabel.AddThemeColorOverride("font_color", UiTheme.Danger);
         }
         else if (turnsLeft <= 0)
