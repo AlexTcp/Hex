@@ -380,12 +380,17 @@ public partial class HexBoard : Node3D, IBattleQuery
         EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
         SetThreat(false);
 
-        // A boss must announce itself — its rules bend invisibly otherwise.
+        // Every battle announces itself; a boss also names its rule bend
+        // (its rules would apply invisibly otherwise).
         if (_boss != BossModifier.None)
         {
             EmitSignal(SignalName.StatusNote,
                 $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
             Sfx.Play("boss", -4f);
+        }
+        else
+        {
+            EmitSignal(SignalName.StatusNote, $"BATTLE {battle}");
         }
 
         // The finale's guaranteed Queen gets her own announcement (last note wins

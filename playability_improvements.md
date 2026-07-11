@@ -269,3 +269,11 @@ out of commits.)
       enemies; now the player can see why a tile isn't red.
 - [x] **Deploy sound** — deploys now thud like moves.
 - [x] **Verified** — build clean; 80 autoplay runs 0 failures (22 wins); UI-flow PASS.
+
+## Round 21
+
+- [x] **Every battle announces itself** — non-boss battles now flourish "BATTLE N" at start
+      (bosses keep their named announcement + sting). The shop's subtitle line now also
+      shows "Battle N of 12 awaits." for normal battles (muted) instead of staying blank.
+      (icon.svg checked — already custom and on-brand, no work needed.)
+- [x] **Verified** — build clean; 60 autoplay runs 0 failures (14 wins); UI-flow PASS.

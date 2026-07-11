@@ -107,12 +107,15 @@ public partial class ShopScreen : Control
         {
             _heading.Text = $"THE EXCHEQUER — {BossCatalog.NameOf(boss).ToUpperInvariant()} AWAITS";
             _bossLine.Text = BossCatalog.EffectOf(boss);
+            _bossLine.AddThemeColorOverride("font_color", UiTheme.Danger);
             _bossLine.Visible = true;
         }
         else
         {
             _heading.Text = "THE EXCHEQUER";
-            _bossLine.Visible = false;
+            _bossLine.Text = $"Battle {run.Battle} of {RunState.FinalBattle} awaits.";
+            _bossLine.AddThemeColorOverride("font_color", UiTheme.TextMuted);
+            _bossLine.Visible = true;
         }
         BuildOffers();
         RefreshMoney();
