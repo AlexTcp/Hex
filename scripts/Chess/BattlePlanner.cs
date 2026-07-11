@@ -61,6 +61,11 @@ public static class BattlePlanner
         return Math.Max(4, turns);
     }
 
+    // Player actions a cracked ring holds before collapsing (the telegraph
+    // window). Stonemason buys one extra.
+    public static int CrackGrace(RunState run) =>
+        2 + (run != null && run.Has(GambitKind.Stonemason) ? 1 : 0);
+
     public static BossModifier BossFor(int battle)
     {
         if (!RunState.IsBossBattle(battle)) return BossModifier.None;

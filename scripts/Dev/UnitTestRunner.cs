@@ -46,6 +46,7 @@ public partial class UnitTestRunner : Node
             TestPieceRules();
             TestEnemyPlanner();
             TestBattlePlanner();
+            TestBattleReferee();
             TestShopOffers();
             TestRunStateAndScoring();
         }
@@ -249,6 +250,44 @@ public partial class UnitTestRunner : Node
                 for (int i = 1; i < mid.Count; i++)
                     Check(mid[i] == mid[0], $"themed roster single-kind (seed {seed})");
         }
+    }
+
+    // ----- BattleReferee ----------------------------------------------------------
+
+    private void TestBattleReferee()
+    {
+        // The historical zombie-army bug: a mutual wipe must be a LOSS.
+        Check(BattleReferee.Decide(0, 0, 0) == BattleOutcome.Loss, "mutual wipe is a loss");
+        Check(BattleReferee.Decide(1, 0, 0) == BattleOutcome.Win, "last piece standing wins");
+        Check(BattleReferee.Decide(0, 1, 0) == BattleOutcome.Win, "reserve survives a mutual board wipe");
+        Check(BattleReferee.Decide(0, 1, 2) == BattleOutcome.Continue, "reserve keeps the battle alive");
+        Check(BattleReferee.Decide(0, 0, 2) == BattleOutcome.Loss, "wiped with no reserve is a loss");
+        Check(BattleReferee.Decide(3, 0, 2) == BattleOutcome.Continue, "both sides alive continues");
+
+        // Standoff: reserve counts toward the player; ties go to the player.
+        var pieces = new List<BattlePiece>
+        {
+            new() { Kind = PieceKind.Bishop, Side = PieceSide.Player },   // 3
+            new() { Kind = PieceKind.Bishop, Side = PieceSide.Enemy },    // 3
+        };
+        Check(BattleReferee.PlayerWinsStandoff(pieces, new List<PieceKind>()),
+            "standoff tie goes to the player");
+        pieces.Add(new BattlePiece { Kind = PieceKind.Queen, Side = PieceSide.Enemy });   // +6
+        Check(!BattleReferee.PlayerWinsStandoff(pieces, new List<PieceKind>()),
+            "enemy-heavier standoff is a loss");
+        Check(BattleReferee.PlayerWinsStandoff(pieces, new List<PieceKind> { PieceKind.Queen }),
+            "reserve value counts in the standoff");
+        pieces[1].Alive = false;   // dead pieces don't count
+        pieces[2].Alive = false;
+        Check(BattleReferee.PlayerWinsStandoff(pieces, null),
+            "dead pieces excluded; null reserve tolerated");
+
+        // Crack grace pacing (Stonemason buys one action).
+        var run = new RunState();
+        Check(BattlePlanner.CrackGrace(run) == 2, "crack grace base = 2");
+        run.Gambits.Add(GambitKind.Stonemason);
+        Check(BattlePlanner.CrackGrace(run) == 3, "stonemason grace = 3");
+        Check(BattlePlanner.CrackGrace(null) == 2, "null run tolerated");
     }
 
     // ----- ShopOffers ------------------------------------------------------------

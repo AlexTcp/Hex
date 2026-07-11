@@ -44,7 +44,6 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     private const float PieceY = 0.35f;
     private const float RingY = 0.09f;
-    private const int CrackGraceActions = 2;   // player actions between crack and collapse
     private const int StandoffActions = 16;    // capture-free terminal actions before adjudication
 
     // The enemy's answer resolves synchronously but its VISUALS lag so the
@@ -1033,8 +1032,9 @@ public partial class HexBoard : Node3D, IBattleQuery
     // ----- Crumble -------------------------------------------------------------
 
     // Each player action ticks the timer. At zero the outermost ring cracks
-    // (telegraphed, still playable); CrackGraceActions later it collapses —
-    // pieces on it die — and the next ring cracks. Radius <= 1 never crumbles.
+    // (telegraphed, still playable); BattlePlanner.CrackGrace actions later it
+    // collapses — pieces on it die — and the next ring cracks. Radius <= 1
+    // never crumbles.
     private void TickCrumble()
     {
         // While a ring is cracked, turnsLeft carries the actions until it
@@ -1073,9 +1073,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         EmitSignal(SignalName.CrumbleChanged, 0, false);
     }
 
-    // Actions a cracked ring holds before collapsing (Stonemason buys one more).
-    private int CrackGrace() =>
-        CrackGraceActions + (_run != null && _run.Has(GambitKind.Stonemason) ? 1 : 0);
+    private int CrackGrace() => BattlePlanner.CrackGrace(_run);
 
     private void CrackRing(int radius)
     {
@@ -1116,21 +1114,12 @@ public partial class HexBoard : Node3D, IBattleQuery
     {
         if (!_running) return true;
 
-        // Loss is checked first: when one collapse wipes both armies at once,
-        // a "win" here would hand the shop an empty army and the next battle
-        // would start with nothing to move and hang forever.
-        if (CountSide(PieceSide.Player) == 0 && (_run == null || _run.Reserve.Count == 0))
-        {
-            LoseBattle();
-            return true;
-        }
-
-        if (CountSide(PieceSide.Enemy) == 0)
-        {
-            WinBattle();
-            return true;
-        }
-
+        // BattleReferee checks the loss BEFORE the win so a mutual wipe never
+        // hands the shop an empty army.
+        var outcome = BattleReferee.Decide(
+            CountSide(PieceSide.Player), _run?.Reserve.Count ?? 0, CountSide(PieceSide.Enemy));
+        if (outcome == BattleOutcome.Loss) { LoseBattle(); return true; }
+        if (outcome == BattleOutcome.Win) { WinBattle(); return true; }
         return false;
     }
 
@@ -1176,24 +1165,12 @@ public partial class HexBoard : Node3D, IBattleQuery
     // Terminal-board standoff: the crumble is spent and no piece has been
     // captured for a long stretch — some endgames can never resolve by play
     // (a bishop can never attack an adjacent hex, so bishop-vs-bishop on the
-    // collapsed 7-tile board is mutually uncapturable). Adjudicate by
-    // remaining force, reserve included; the player wins ties.
+    // collapsed 7-tile board is mutually uncapturable). BattleReferee
+    // adjudicates by remaining force, reserve included, ties to the player.
     private void ResolveStandoff()
     {
-        int player = 0, enemy = 0;
-        for (int i = 0; i < _pieces.Count; i++)
-        {
-            var p = _pieces[i];
-            if (!p.Alive) continue;
-            if (p.Side == PieceSide.Player) player += PieceCatalog.ValueOf(p.Kind);
-            else enemy += PieceCatalog.ValueOf(p.Kind);
-        }
-        if (_run != null)
-            for (int i = 0; i < _run.Reserve.Count; i++)
-                player += PieceCatalog.ValueOf(_run.Reserve[i]);
-
         EmitSignal(SignalName.StatusNote, "STANDOFF");
-        if (player >= enemy) WinBattle();
+        if (BattleReferee.PlayerWinsStandoff(_pieces, _run?.Reserve)) WinBattle();
         else LoseBattle();
     }
 

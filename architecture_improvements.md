@@ -89,3 +89,15 @@ headless boot. Reference bot win rate ~20–30% (statistical, not exact).
       `runs=5 seed=42` sweeps produced bit-identical outcomes. Documented in CLAUDE.md.
 - [x] **Verified** — build clean; 941/941 unit checks; 80 autoplay runs 0 failures;
       UI-flow PASS.
+
+## Round 6
+
+- [x] **Pure win/loss decision** — `Chess/BattleReferee.Decide(players, reserve, enemies)`
+      now owns the loss-before-win ordering; CheckBattleEnd consumes. Unit-locked incl.
+      the mutual-wipe-is-a-loss case (the historical zombie-army bug's invariant).
+- [x] **Pure standoff adjudication** — `BattleReferee.PlayerWinsStandoff` (reserve counts,
+      dead pieces excluded, ties to the player); ResolveStandoff consumes; unit-locked.
+- [x] **Crack grace joins the pacing module** — `BattlePlanner.CrackGrace(run)` next to
+      CrumbleTurns; HexBoard delegates; unit-locked (base 2, Stonemason 3, null-safe).
+- [x] **Verified** — build clean; 954/954 unit checks; 80 autoplay runs 0 failures;
+      UI-flow PASS.
