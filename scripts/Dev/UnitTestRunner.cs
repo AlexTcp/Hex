@@ -140,6 +140,18 @@ public partial class UnitTestRunner : Node
         board.Occ[new HexCoord(2, 0)] = PieceSide.Enemy;
         Check(Count(PieceKind.Rook, PieceSide.Player, HexCoord.Zero) == 22, "rook enemy capture = 22");
         board.Occ.Clear();
+
+        // Stranded pawns: every forward hex off the active set, per side.
+        var active = new HashSet<HexCoord>();
+        foreach (var c in HexCoord.Within(2)) active.Add(c);
+        Check(PieceRules.PawnStranded(PieceSide.Player, new HexCoord(0, -2), active),
+            "player pawn stranded at the north edge");
+        Check(!PieceRules.PawnStranded(PieceSide.Player, new HexCoord(0, 2), active),
+            "player pawn mobile at the south edge");
+        Check(PieceRules.PawnStranded(PieceSide.Enemy, new HexCoord(0, 2), active),
+            "enemy pawn stranded at the south edge");
+        Check(!PieceRules.PawnStranded(PieceSide.Enemy, new HexCoord(0, -2), active),
+            "enemy pawn mobile at the north edge");
     }
 
     // ----- EnemyPlanner --------------------------------------------------------

@@ -19,7 +19,8 @@ The codebase is heavily optimized for low-spec mobile: **GL Compatibility render
 - **Headless typecheck**: `dotnet build Hex.csproj`. Project targets .NET 8 (`Godot.NET.Sdk/4.6.2`, `EnableDynamicLoading=true`, nullable disabled).
 - **Headless playtest (run before committing gameplay changes)**:
   - `godot --headless --path . res://dev/autoplay.tscn -- runs=100` — the autoplay bot plays N complete runs through the real tap-input path (DEBUG-only hooks in `HexBoard.Debug.cs`, shared brain in `scripts/Dev/BotBrain.cs`); prints a per-battle difficulty table; exits non-zero on crash/softlock/inconsistency. Reference curve: ~25% bot win rate, battle-12 clear ~65%.
-  - `godot --headless --path . res://dev/uiflow.tscn` — boots the real `game.tscn` and presses the actual buttons through title/new-run/tutorial/pause/battle/shop/game-over. **Touches the real save — back up/restore `%APPDATA%\Godot\app_userdata\Hex\hex.cfg` around it.**
+  - `godot --headless --path . res://dev/uiflow.tscn` — boots the real `game.tscn` and presses the actual buttons through title/new-run/tutorial/pause/battle/shop/game-over. It stashes and restores `user://hex.cfg` itself on every exit path, so no external save backup is needed.
+  - `godot --headless --path . res://dev/tests.tscn` — ~940 fast deterministic unit checks over the Godot-free logic (HexCoord, PieceRules incl. `PawnStranded`, EnemyPlanner, BattlePlanner, ShopOffers, RunState, Scoring). Run this first; it's instant.
   - `godot --path . res://dev/uiflow.tscn -- screenshots=<dir>` (windowed, NOT headless) — same flow, capturing PNGs at nine key screens (incl. a forced victory presentation and the first capture's +$N pop). Review the images after UI/visual changes — screenshot diffing has caught real bugs the headless harnesses can't see (stale highlight paint, clipped chips, hidden shop preview).
   - After adding assets run `godot --headless --path . --import` once.
 - **Audio assets**: `audio/*.wav` are synthesized by `python dev/gen_sfx.py` (deterministic; regenerating leaves untouched sounds byte-identical). Don't hand-edit the WAVs.
@@ -49,7 +50,8 @@ The codebase is heavily optimized for low-spec mobile: **GL Compatibility render
 
 ### Chess Core (`scripts/Chess/`)
 
-- `PieceRules.cs` — `PieceKind`/`PieceSide`, the `IBattleQuery` interface, the direction tables (6 rook edge dirs, 6 bishop diagonals, 12 knight leaps — validated in a `#if DEBUG` static ctor), and the single zero-alloc `LegalMoves(kind, side, from, board, output)` generator. `PieceCatalog` holds names/monograms/descriptions/values/prices.
+- `PieceRules.cs` — `PieceKind`/`PieceSide`, the `IBattleQuery` interface, the direction tables (6 rook edge dirs, 6 bishop diagonals, 12 knight leaps — validated in a `#if DEBUG` static ctor), the single zero-alloc `LegalMoves(kind, side, from, board, output)` generator, and `PawnStranded` (the stranded-promotion predicate). `PieceCatalog` holds names/monograms/descriptions/values/prices.
+- `EnemyPlanner.cs` — the pure enemy decision (capture > approach > reservoir-random); HexBoard executes what it chooses. `Scoring.cs` — every score/pay formula (the single tuning surface). `ShopOffers.cs` — offer rolls shared by ShopScreen and the autoplay harness.
 - `BattlePiece.cs` — plain data class per on-board piece (not a Node; `HexBoard` owns the `MeshInstance3D`). `PieceVisuals`: one `static readonly` mesh per kind + one material per side + gold selected material — shared GPU resources.
 - `Gambit.cs` / `TileUpgrade.cs` — enums + static catalogs (pure data; effects live at the single resolution point in `HexBoard` and are driven by `RunState`).
 - `RunState.cs` — the run record (see overview). `BattlePlanner.cs` — active radius / crumble turns / enemy-army budget / `BossModifier` per battle.
@@ -93,7 +95,7 @@ The codebase is heavily optimized for low-spec mobile: **GL Compatibility render
 | Path | Contents |
 |------|----------|
 | `scenes/game.tscn` | Single persistent scene — minimal: `GameScreen` (Node3D) + `HexBoard` (Node3D) + `UI` CanvasLayer + `Root` Control. Camera/lights/environment are built in code by `GameScreen`. |
-| `scripts/Board/` | `HexBoard.cs` (battle controller: active tiles, pieces, selection, deploy, enemy AI, crumble, bosses, scoring, FX) |
+| `scripts/Board/` | `HexBoard.cs` (battle controller: lifecycle, input/selection, deploy, resolution, crumble, win/loss), `HexBoard.Fx.cs` (presentation partial: pooled FX, pulse tweens, tile/piece repaint), `HexBoard.Debug.cs` (DEBUG-only harness hooks), `TileVisuals.cs` (shared tile/highlight/FX GPU resources) |
 | `scripts/Hex/` | `HexCoord.cs`, `HexLayout.cs` |
 | `scripts/Chess/` | `PieceRules.cs`, `BattlePiece.cs`, `Gambit.cs`, `TileUpgrade.cs`, `RunState.cs`, `BattlePlanner.cs` |
 | `scripts/UI/` | `GameScreen.cs`, `ScreenManager.cs`, `UiTheme.cs`, `Hud.cs`, `TitleScreen.cs`, `NewRunScreen.cs`, `ShopScreen.cs`, `PauseOverlay.cs`, `GameOverScreen.cs`, `TutorialOverlay.cs` |

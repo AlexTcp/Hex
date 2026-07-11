@@ -127,6 +127,18 @@ public static class PieceRules
         }
     }
 
+    // True when a pawn on `from` can never move again: every forward hex has
+    // left the given active-tile set. Occupancy is deliberately ignored —
+    // blockers are temporary, missing tiles are not. Drives the stranded-pawn
+    // promotion that keeps collapsed endgames resolvable.
+    public static bool PawnStranded(PieceSide side, HexCoord from, HashSet<HexCoord> activeTiles)
+    {
+        var dirs = side == PieceSide.Player ? PlayerPawnDirs : EnemyPawnDirs;
+        for (int d = 0; d < dirs.Length; d++)
+            if (activeTiles.Contains(from + dirs[d])) return false;
+        return true;
+    }
+
     private static void Slide(HexCoord from, PieceSide side, HexCoord[] dirs,
         IBattleQuery board, List<HexCoord> output)
     {

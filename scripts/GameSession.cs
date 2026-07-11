@@ -23,7 +23,7 @@ namespace HexGame;
 
 public partial class GameSession : Node
 {
-    private const string SavePath = "user://hex.cfg";
+    public const string SavePath = "user://hex.cfg";   // UiFlowDriver backs this file up
     private const string Section = "progress";
 
     private readonly System.Random _rng = new();

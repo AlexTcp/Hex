@@ -11,7 +11,8 @@
 //
 // Run:
 //   godot --headless --path . res://dev/uiflow.tscn
-//   (Writes to the real user://hex.cfg — back it up around CI runs.)
+//   The real user://hex.cfg is stashed at start and restored on every exit
+//   path, so runs never disturb the player's records.
 //
 // Exit codes: 0 = pass, 1 = flow failure, 2 = unhandled exception. DEBUG-only.
 // =============================================================================
@@ -40,23 +41,52 @@ public partial class UiFlowDriver : Node
     private bool _won, _lost;
     private int _fails;
     private string _shotDir;   // screenshots=<dir> user arg; requires a windowed run
+    private byte[] _savedCfg;  // stashed user://hex.cfg bytes (null = absent at start)
+    private bool _hadCfg;
 
     public override void _Ready() => _ = Run();
 
     private async Task Run()
     {
+        BackupSave();
+        int code;
         try
         {
             await RunFlow();
+            code = _fails == 0 ? 0 : 1;
+            GD.Print(code == 0 ? "[UIFLOW] PASS" : $"[UIFLOW] FAILED with {_fails} failures");
         }
         catch (Exception e)
         {
             GD.PrintErr($"[UIFLOW] EXCEPTION: {e}");
-            GetTree().Quit(2);
-            return;
+            code = 2;
         }
-        GD.Print(_fails == 0 ? "[UIFLOW] PASS" : $"[UIFLOW] FAILED with {_fails} failures");
-        GetTree().Quit(_fails == 0 ? 0 : 1);
+        RestoreSave();
+        GetTree().Quit(code);
+    }
+
+    // The flow writes to the real save (records, tutorial-seen); stash the
+    // file's bytes and put them back on every exit path so harness runs never
+    // disturb the player's progress.
+    private void BackupSave()
+    {
+        _hadCfg = FileAccess.FileExists(GameSession.SavePath);
+        if (!_hadCfg) return;
+        using var f = FileAccess.Open(GameSession.SavePath, FileAccess.ModeFlags.Read);
+        _savedCfg = f.GetBuffer((long)f.GetLength());
+    }
+
+    private void RestoreSave()
+    {
+        if (_hadCfg)
+        {
+            using var f = FileAccess.Open(GameSession.SavePath, FileAccess.ModeFlags.Write);
+            f.StoreBuffer(_savedCfg);
+        }
+        else if (FileAccess.FileExists(GameSession.SavePath))
+        {
+            DirAccess.RemoveAbsolute(GameSession.SavePath);
+        }
     }
 
     private async Task RunFlow()
@@ -65,166 +95,15 @@ public partial class UiFlowDriver : Node
             if (arg.StartsWith("screenshots="))
                 _shotDir = arg.Substring("screenshots=".Length).TrimEnd('/', '\\');
 
-        var packed = GD.Load<PackedScene>("res://scenes/game.tscn");
-        AddChild(packed.Instantiate());
-        await Frames(3);
+        if (!await BootGame()) return;
+        if (!await PhaseTitleToFirstBattle()) return;
+        await PhaseInspectionShots();
 
-        _board = FindNode<HexBoard>(this);
-        _session = GetNode<GameSession>("/root/GameSession");
-        if (_board == null) { Fail("HexBoard not found in game scene"); return; }
-        _board.BattleWon += () => _won = true;
-        _board.BattleLost += () => _lost = true;
-
-        // Title → New Run (reroll once, then begin).
-        if (await ExpectButton("PLAY") == null) return;
-        await Shot("01-title");
-        if (!await PressButton("PLAY")) return;
-        if (!await PressButton("REROLL ARMY")) return;
-        await Shot("02-newrun");
-        if (!await PressButton("BEGIN RUN")) return;
-
-        // First-run tutorial (only if this save hasn't seen it).
-        var skip = FindButton("SKIP");
-        if (skip != null)
-        {
-            skip.EmitSignal(BaseButton.SignalName.Pressed);
-            await Frames(2);
-            GD.Print("[UIFLOW] tutorial skipped");
-        }
-
-        // HUD up? Pause and resume.
-        if (await ExpectButton("II") == null) return;
-        if (!await PressButton("II")) return;
-        await Shot("03-pause");
-        if (!await PressButton("RESUME")) return;
-        if (await ExpectButton("II") == null) return;
-
-        // Screenshot a selection (highlights + inspection chip) and an
-        // enemy-reach inspection before playing the battle out. Prefer a piece
-        // with a death-tile move so the red warning appears in frame; fall
-        // back to the piece nearest an enemy.
-        if (_shotDir != null)
-        {
-            var moves = new System.Collections.Generic.List<HexCoord>(64);
-            BattlePiece pick = null;
-            int best = int.MaxValue;
-            bool pickHasDanger = false;
-            foreach (var p in _board.DebugPieces)
-            {
-                if (!p.Alive || p.Side != PieceSide.Player) continue;
-                PieceRules.LegalMoves(p.Kind, PieceSide.Player, p.Coord, _board, moves);
-                bool hasDanger = false;
-                foreach (var m in moves)
-                    if (_board.DebugIsDeathTile(p, m)) { hasDanger = true; break; }
-                int dist = int.MaxValue;
-                foreach (var e in _board.DebugPieces)
-                {
-                    if (!e.Alive || e.Side != PieceSide.Enemy) continue;
-                    int d = p.Coord.Distance(e.Coord);
-                    if (d < dist) dist = d;
-                }
-                if ((hasDanger && !pickHasDanger)
-                    || (hasDanger == pickHasDanger && dist < best))
-                {
-                    pick = p;
-                    best = dist;
-                    pickHasDanger = hasDanger;
-                }
-            }
-            if (pick != null)
-            {
-                _board.DebugTap(pick.Coord);
-                await Shot("04-selection");
-                _board.DebugTap(pick.Coord);   // toggle off
-            }
-            foreach (var p in _board.DebugPieces)
-            {
-                if (!p.Alive || p.Side != PieceSide.Enemy) continue;
-                _board.DebugTap(p.Coord);
-                await Shot("05-enemy-reach");
-                _board.ClearSelection();
-                break;
-            }
-        }
-
-        // Play battle 1 to completion via the shared bot.
+        // Play battle 1 to completion via the shared bot, then branch.
         if (!await PlayBattle()) return;
-
         if (_won)
         {
-            GD.Print("[UIFLOW] battle 1 won → shop");
-            if (await ExpectButton("NEXT BATTLE") == null) return;
-            await Shot("06-shop");
-
-            // Exercise a purchase if anything is affordable.
-            var buy = FindButton("BUY", requireEnabled: true);
-            if (buy != null)
-            {
-                buy.EmitSignal(BaseButton.SignalName.Pressed);
-                await Frames(2);
-                GD.Print("[UIFLOW] bought a shop offer");
-            }
-
-            if (!await PressButton("NEXT BATTLE")) return;
-            if (await ExpectButton("II") == null) return;
-
-            // With screenshots on, push through to battle 4 (buying in every
-            // shop): stall in battle 3 until the ring cracks for that shot,
-            // then capture Lockmaker's locked tiles at battle 4's start —
-            // the two board states no other shot covers. Losing is tolerated.
-            if (_shotDir != null)
-            {
-                while (_session.CurrentRun.Battle < 4)
-                {
-                    if (_session.CurrentRun.Battle == 3)
-                    {
-                        _won = _lost = false;
-                        for (int a = 0; a < MaxActionsPerBattle && !_won && !_lost
-                            && _board.DebugCrackedCount == 0; a++)
-                        {
-                            if (BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, BotMode.Stall)
-                                == BotActionResult.NoAction) break;
-                            await Frames(1);
-                        }
-                        if (_board.DebugCrackedCount > 0) await Shot("11-cracked");
-                        else GD.Print("[UIFLOW] battle 3 ended before cracking");
-                        if (!_won && !_lost && !await FinishBattle()) return;
-                    }
-                    else if (!await PlayBattle()) return;
-
-                    if (_lost) break;
-                    if (await ExpectButton("NEXT BATTLE") == null) return;
-                    for (int b = 0; b < 2; b++)
-                    {
-                        var offer = FindButton("BUY", requireEnabled: true);
-                        if (offer == null) break;
-                        offer.EmitSignal(BaseButton.SignalName.Pressed);
-                        await Frames(2);
-                    }
-                    if (!await PressButton("NEXT BATTLE")) return;
-                    if (await ExpectButton("II") == null) return;
-                }
-                if (!_lost && _session.CurrentRun.Battle == 4)
-                {
-                    if (_board.DebugLockedCount > 0) await Shot("10-lockmaker");
-                    else GD.Print("[UIFLOW] battle 4 had no locked tiles");
-                }
-                if (_lost)
-                {
-                    GD.Print("[UIFLOW] lost before battle 4 — tolerated, heading to title");
-                    if (await ExpectButton("NEW RUN") == null) return;
-                    if (!await PressButton("TITLE")) return;
-                }
-            }
-
-            // Pause → abandon → back to Title (if still in a battle).
-            if (FindButton("II") != null)
-            {
-                if (!await PressButton("II")) return;
-                if (!await PressButton("ABANDON RUN")) return;
-            }
-            if (await ExpectButton("PLAY") == null) return;
-            GD.Print("[UIFLOW] abandon → title ok");
+            if (!await PhaseWinPath()) return;
         }
         else
         {
@@ -235,8 +114,188 @@ public partial class UiFlowDriver : Node
             GD.Print("[UIFLOW] game over → title ok");
         }
 
-        // Phase 2: reach the defeat path deliberately so the Game Over screen's
-        // buttons get exercised (a competent bot usually wins battle 1).
+        await PhaseDeliberateDefeat();
+    }
+
+    private async Task<bool> BootGame()
+    {
+        var packed = GD.Load<PackedScene>("res://scenes/game.tscn");
+        AddChild(packed.Instantiate());
+        await Frames(3);
+
+        _board = FindNode<HexBoard>(this);
+        _session = GetNode<GameSession>("/root/GameSession");
+        if (_board == null) { Fail("HexBoard not found in game scene"); return false; }
+        _board.BattleWon += () => _won = true;
+        _board.BattleLost += () => _lost = true;
+        return true;
+    }
+
+    // Title → New Run (reroll once, begin), optional tutorial skip, then a
+    // pause/resume round-trip to prove the HUD is live.
+    private async Task<bool> PhaseTitleToFirstBattle()
+    {
+        if (await ExpectButton("PLAY") == null) return false;
+        await Shot("01-title");
+        if (!await PressButton("PLAY")) return false;
+        if (!await PressButton("REROLL ARMY")) return false;
+        await Shot("02-newrun");
+        if (!await PressButton("BEGIN RUN")) return false;
+
+        // First-run tutorial (only if this save hasn't seen it).
+        var skip = FindButton("SKIP");
+        if (skip != null)
+        {
+            skip.EmitSignal(BaseButton.SignalName.Pressed);
+            await Frames(2);
+            GD.Print("[UIFLOW] tutorial skipped");
+        }
+
+        if (await ExpectButton("II") == null) return false;
+        if (!await PressButton("II")) return false;
+        await Shot("03-pause");
+        if (!await PressButton("RESUME")) return false;
+        return await ExpectButton("II") != null;
+    }
+
+    // Screenshot a selection (highlights + inspection chip) and an enemy-reach
+    // inspection before playing the battle out. Prefer a piece with a
+    // death-tile move so the red warning appears in frame; fall back to the
+    // piece nearest an enemy.
+    private async Task PhaseInspectionShots()
+    {
+        if (_shotDir == null) return;
+
+        var moves = new System.Collections.Generic.List<HexCoord>(64);
+        BattlePiece pick = null;
+        int best = int.MaxValue;
+        bool pickHasDanger = false;
+        foreach (var p in _board.DebugPieces)
+        {
+            if (!p.Alive || p.Side != PieceSide.Player) continue;
+            PieceRules.LegalMoves(p.Kind, PieceSide.Player, p.Coord, _board, moves);
+            bool hasDanger = false;
+            foreach (var m in moves)
+                if (_board.DebugIsDeathTile(p, m)) { hasDanger = true; break; }
+            int dist = int.MaxValue;
+            foreach (var e in _board.DebugPieces)
+            {
+                if (!e.Alive || e.Side != PieceSide.Enemy) continue;
+                int d = p.Coord.Distance(e.Coord);
+                if (d < dist) dist = d;
+            }
+            if ((hasDanger && !pickHasDanger)
+                || (hasDanger == pickHasDanger && dist < best))
+            {
+                pick = p;
+                best = dist;
+                pickHasDanger = hasDanger;
+            }
+        }
+        if (pick != null)
+        {
+            _board.DebugTap(pick.Coord);
+            await Shot("04-selection");
+            _board.DebugTap(pick.Coord);   // toggle off
+        }
+        foreach (var p in _board.DebugPieces)
+        {
+            if (!p.Alive || p.Side != PieceSide.Enemy) continue;
+            _board.DebugTap(p.Coord);
+            await Shot("05-enemy-reach");
+            _board.ClearSelection();
+            break;
+        }
+    }
+
+    // Battle 1 won: shop (shot + a purchase), then with screenshots on push
+    // through to battle 4 for the cracked-board and Lockmaker shots, and
+    // finally pause → abandon back to the title.
+    private async Task<bool> PhaseWinPath()
+    {
+        GD.Print("[UIFLOW] battle 1 won → shop");
+        if (await ExpectButton("NEXT BATTLE") == null) return false;
+        await Shot("06-shop");
+
+        var buy = FindButton("BUY", requireEnabled: true);
+        if (buy != null)
+        {
+            buy.EmitSignal(BaseButton.SignalName.Pressed);
+            await Frames(2);
+            GD.Print("[UIFLOW] bought a shop offer");
+        }
+
+        if (!await PressButton("NEXT BATTLE")) return false;
+        if (await ExpectButton("II") == null) return false;
+
+        if (_shotDir != null && !await PhaseBoardStateShots()) return false;
+
+        // Pause → abandon → back to Title (if still in a battle).
+        if (FindButton("II") != null)
+        {
+            if (!await PressButton("II")) return false;
+            if (!await PressButton("ABANDON RUN")) return false;
+        }
+        if (await ExpectButton("PLAY") == null) return false;
+        GD.Print("[UIFLOW] abandon → title ok");
+        return true;
+    }
+
+    // Push through real shops to battle 4 (buying each visit): stall battle 3
+    // until the ring cracks for that shot, then capture Lockmaker's locked
+    // tiles at battle 4's start. Losing on the way is tolerated.
+    private async Task<bool> PhaseBoardStateShots()
+    {
+        while (_session.CurrentRun.Battle < 4)
+        {
+            if (_session.CurrentRun.Battle == 3)
+            {
+                _won = _lost = false;
+                for (int a = 0; a < MaxActionsPerBattle && !_won && !_lost
+                    && _board.DebugCrackedCount == 0; a++)
+                {
+                    if (BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, BotMode.Stall)
+                        == BotActionResult.NoAction) break;
+                    await Frames(1);
+                }
+                if (_board.DebugCrackedCount > 0) await Shot("11-cracked");
+                else GD.Print("[UIFLOW] battle 3 ended before cracking");
+                if (!_won && !_lost && !await FinishBattle()) return false;
+            }
+            else if (!await PlayBattle()) return false;
+
+            if (_lost) break;
+            if (await ExpectButton("NEXT BATTLE") == null) return false;
+            for (int b = 0; b < 2; b++)
+            {
+                var offer = FindButton("BUY", requireEnabled: true);
+                if (offer == null) break;
+                offer.EmitSignal(BaseButton.SignalName.Pressed);
+                await Frames(2);
+            }
+            if (!await PressButton("NEXT BATTLE")) return false;
+            if (await ExpectButton("II") == null) return false;
+        }
+
+        if (!_lost && _session.CurrentRun.Battle == 4)
+        {
+            if (_board.DebugLockedCount > 0) await Shot("10-lockmaker");
+            else GD.Print("[UIFLOW] battle 4 had no locked tiles");
+        }
+        if (_lost)
+        {
+            GD.Print("[UIFLOW] lost before battle 4 — tolerated, heading to title");
+            if (await ExpectButton("NEW RUN") == null) return false;
+            if (!await PressButton("TITLE")) return false;
+        }
+        return true;
+    }
+
+    // Reach the defeat path deliberately so the Game Over screen's buttons get
+    // exercised (a competent bot usually wins battle 1), including the forced
+    // victory presentation for its screenshot.
+    private async Task PhaseDeliberateDefeat()
+    {
         if (!await PressButton("PLAY")) return;
         if (!await PressButton("BEGIN RUN")) return;
         if (await ExpectButton("II") == null) return;

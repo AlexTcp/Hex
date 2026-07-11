@@ -50,3 +50,20 @@ headless boot. Reference bot win rate ~20–30% (statistical, not exact).
       `RefreshReserve()`; ScreenManager's signal handler updated; class-header doc synced.
 - [x] **Verified** — build clean; 937/937 unit checks; 80 autoplay runs 0 failures (24
       wins); UI-flow PASS; no mojibake anywhere in scripts/.
+
+## Round 3
+
+- [x] **UI-flow harness backs up the save itself** — UiFlowDriver stashes `user://hex.cfg`
+      bytes at start and restores (or deletes) on every exit path (pass/fail/exception);
+      `GameSession.SavePath` made public const so the path has one source. Verified: run
+      with NO external wrapper leaves the save hash byte-identical.
+- [x] **Split UiFlowDriver.RunFlow** — now a ~25-line orchestrator over BootGame /
+      PhaseTitleToFirstBattle / PhaseInspectionShots / PhaseWinPath / PhaseBoardStateShots /
+      PhaseDeliberateDefeat (behavior identical; early-return semantics preserved).
+- [x] **Testable stranded-pawn rule** — `PieceRules.PawnStranded(side, from, activeTiles)`
+      extracted; HexBoard.PromoteStrandedPawns consumes it; 4 new unit checks (both sides,
+      both edges). Suite now 941 checks.
+- [x] **CLAUDE.md sync** — harness docs (self-backing uiflow, tests.tscn), Chess/ additions,
+      HexBoard partial layout, TileVisuals row.
+- [x] **Verified** — build clean; 941/941 unit checks; UI-flow PASS with save hash
+      preserved sans wrapper; 80 autoplay runs 0 failures (25 wins).

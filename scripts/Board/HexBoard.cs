@@ -833,11 +833,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         {
             var p = _pieces[i];
             if (!p.Alive || p.Kind != PieceKind.Pawn) continue;
-            var dirs = p.Side == PieceSide.Player ? PieceRules.PlayerPawnDirs : PieceRules.EnemyPawnDirs;
-            bool anyForwardOnBoard = false;
-            for (int d = 0; d < dirs.Length; d++)
-                if (_active.Contains(p.Coord + dirs[d])) { anyForwardOnBoard = true; break; }
-            if (!anyForwardOnBoard) PromotePawn(p);
+            if (PieceRules.PawnStranded(p.Side, p.Coord, _active)) PromotePawn(p);
         }
     }
 
