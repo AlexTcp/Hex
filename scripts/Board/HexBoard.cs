@@ -58,6 +58,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     [Signal] public delegate void CrumbleChangedEventHandler(int turnsLeft, bool cracking);
     [Signal] public delegate void ThreatChangedEventHandler(bool inDanger);
     [Signal] public delegate void StatusNoteEventHandler(string note);
+    [Signal] public delegate void InspectChangedEventHandler(string text);   // "" hides
     [Signal] public delegate void DeployModeChangedEventHandler(bool active);
     [Signal] public delegate void BattleWonEventHandler();
     [Signal] public delegate void BattleLostEventHandler();
@@ -605,6 +606,14 @@ public partial class HexBoard : Node3D, IBattleQuery
         else
         {
             EndSelect();
+            // A bare tap on an upgraded tile explains its marker — the colour
+            // code is otherwise taught only once, in the shop.
+            if (_run != null && _active.Contains(coord)
+                && _run.TileUpgrades.TryGetValue(coord, out var upKind))
+            {
+                var up = TileUpgradeCatalog.Info(upKind);
+                EmitSignal(SignalName.InspectChanged, $"{up.Name.ToUpperInvariant()} — {up.Description}");
+            }
         }
     }
 
@@ -648,6 +657,9 @@ public partial class HexBoard : Node3D, IBattleQuery
         StartHighlightPulse();
         Sfx.Play("select", -10f);
 
+        var info = PieceCatalog.Info(piece.Kind);
+        EmitSignal(SignalName.InspectChanged, $"{info.Name.ToUpperInvariant()} — {info.Description}");
+
         // A blocked piece still selects (gold glow), but with no lit tiles the
         // tap reads as dead — say why.
         if (_movesBuffer.Count == 0)
@@ -668,6 +680,8 @@ public partial class HexBoard : Node3D, IBattleQuery
             _highlighted.Add(dest);
             tile.Mesh.MaterialOverride = EnemyReachMaterialShared;
         }
+        var info = PieceCatalog.Info(enemy.Kind);
+        EmitSignal(SignalName.InspectChanged, $"ENEMY {info.Name.ToUpperInvariant()} — {info.Description}");
         Sfx.Play("select", -14f);
         Haptics.Tap(8);
     }
@@ -679,6 +693,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _selPiece = null;
         HideSelectRing();
         ClearHighlights();
+        EmitSignal(SignalName.InspectChanged, "");
     }
 
     // Public hook for the screen flow (e.g. Pause) so highlights/pulse don't

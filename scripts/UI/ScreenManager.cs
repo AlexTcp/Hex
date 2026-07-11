@@ -93,6 +93,7 @@ public partial class ScreenManager : Node
             _board.CrumbleChanged -= OnCrumbleChanged;
             _board.ThreatChanged -= OnThreatChanged;
             _board.StatusNote -= OnStatusNote;
+            _board.InspectChanged -= OnInspectChanged;
             _board.DeployModeChanged -= OnDeployModeChanged;
             _board.BattleWon -= OnBattleWon;
             _board.BattleLost -= OnBattleLost;
@@ -145,6 +146,7 @@ public partial class ScreenManager : Node
         _board.CrumbleChanged += OnCrumbleChanged;
         _board.ThreatChanged += OnThreatChanged;
         _board.StatusNote += OnStatusNote;
+        _board.InspectChanged += OnInspectChanged;
         _board.DeployModeChanged += OnDeployModeChanged;
         _board.BattleWon += OnBattleWon;
         _board.BattleLost += OnBattleLost;
@@ -158,6 +160,7 @@ public partial class ScreenManager : Node
     private void OnArmyChanged(int onBoard, int reserve) => _hud.SetArmy(onBoard, reserve);
     private void OnCrumbleChanged(int turnsLeft, bool cracking) => _hud.SetCrumble(turnsLeft, cracking);
     private void OnStatusNote(string note) => _hud.ShowNote(note);
+    private void OnInspectChanged(string text) => _hud.SetInspect(text);
     private void OnDeployModeChanged(bool active) => _hud.SetDeployArmed(active);
 
     private void OnThreatChanged(bool inDanger) => SetDangerVignette(inDanger);

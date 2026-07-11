@@ -174,3 +174,11 @@ out of commits.)
       inspection, staggered enemy visuals, money pops, Sfx autoload + settings.cfg split,
       harness commands with reference difficulty curve, audio regeneration, new layout rows.
 - [x] **Verified** — build clean; 60 autoplay runs 0 failures (19 wins); UI-flow PASS.
+
+## Round 13
+
+- [x] **HUD inspection chip** — new `InspectChanged(string)` board signal drives a
+      bottom-left autowrapped chip: selecting a piece shows "ROOK — Slides any distance…";
+      tapping an enemy shows "ENEMY KNIGHT — Leaps…"; a bare tap on an upgraded tile
+      explains its marker ("SNARE TILE — An enemy landing here…"). Hides on deselect.
+- [x] **Verified** — build clean; 60 autoplay runs 0 failures (17 wins); UI-flow PASS.

@@ -39,6 +39,8 @@ public partial class Hud : Control
     private Label _note;
     private Tween _noteTween;
     private HBoxContainer _reserveBar;
+    private PanelContainer _inspectChip;
+    private Label _inspectLabel;
     private int _armedIndex = -1;
 
     public Hud(Action onPause, Action<int> onDeploy)
@@ -118,6 +120,19 @@ public partial class Hud : Control
             _onPause?.Invoke();
         };
         AddChild(pause);
+
+        // --- Bottom-left: inspection chip (selected piece / enemy reach / tile) ---
+        _inspectChip = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore };
+        _inspectChip.AddThemeStyleboxOverride("panel",
+            UiTheme.Box(UiTheme.PanelRaised, 10, 1, UiTheme.PanelBorder, 16, 10));
+        _inspectChip.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        _inspectChip.OffsetLeft = 24; _inspectChip.OffsetTop = -150; _inspectChip.OffsetBottom = -24;
+        _inspectChip.Visible = false;
+        _inspectLabel = UiTheme.MakeLabel("", UiTheme.BodySmallSize, UiTheme.Text);
+        _inspectLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _inspectLabel.CustomMinimumSize = new Vector2(330, 0);
+        _inspectChip.AddChild(_inspectLabel);
+        AddChild(_inspectChip);
 
         // --- Bottom-centre: reserve bar ---
         _reserveBar = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
@@ -246,6 +261,13 @@ public partial class Hud : Control
             };
             _reserveBar.AddChild(b);
         }
+    }
+
+    public void SetInspect(string text)
+    {
+        if (_inspectChip == null) return;
+        _inspectChip.Visible = !string.IsNullOrEmpty(text);
+        if (_inspectLabel != null) _inspectLabel.Text = text;
     }
 
     public void ShowNote(string text) => Flourish(text, UiTheme.Accent);
