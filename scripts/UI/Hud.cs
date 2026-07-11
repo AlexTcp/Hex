@@ -38,7 +38,7 @@ public partial class Hud : Control
     private PanelContainer _crumbleChip;
     private Label _note;
     private Tween _noteTween;
-    private HBoxContainer _reserveBar;
+    private VBoxContainer _reserveBar;
     private PanelContainer _inspectChip;
     private Label _inspectLabel;
     private int _armedIndex = -1;
@@ -141,9 +141,10 @@ public partial class Hud : Control
         _inspectChip.AddChild(_inspectLabel);
         AddChild(_inspectChip);
 
-        // --- Bottom-centre: reserve bar ---
-        _reserveBar = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        _reserveBar.AddThemeConstantOverride("separation", 12);
+        // --- Bottom-centre: reserve bar (wraps into rows of 6 — a hoarded
+        // reserve used to clip off both screen edges and become untappable) ---
+        _reserveBar = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        _reserveBar.AddThemeConstantOverride("separation", 8);
         _reserveBar.SetAnchorsPreset(LayoutPreset.BottomWide);
         _reserveBar.OffsetTop = -96; _reserveBar.OffsetBottom = -24;
         _reserveBar.MouseFilter = MouseFilterEnum.Ignore;
@@ -236,13 +237,26 @@ public partial class Hud : Control
 
     private void RebuildReserveBar()
     {
+        const int PerRow = 6;
         if (_reserveBar == null) return;
         foreach (Node child in _reserveBar.GetChildren())
             child.QueueFree();
         if (_run == null || _run.Reserve.Count == 0) return;
 
+        int rows = (_run.Reserve.Count + PerRow - 1) / PerRow;
+        _reserveBar.OffsetTop = -(24 + rows * 72);
+
+        HBoxContainer row = null;
         for (int i = 0; i < _run.Reserve.Count; i++)
         {
+            if (i % PerRow == 0)
+            {
+                row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+                row.AddThemeConstantOverride("separation", 12);
+                row.MouseFilter = MouseFilterEnum.Ignore;
+                _reserveBar.AddChild(row);
+            }
+
             int idx = i;
             var info = PieceCatalog.Info(_run.Reserve[i]);
             var b = new Button
@@ -266,7 +280,7 @@ public partial class Hud : Control
                 }
                 RebuildReserveBar();
             };
-            _reserveBar.AddChild(b);
+            row.AddChild(b);
         }
     }
 

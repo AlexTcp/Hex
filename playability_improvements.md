@@ -337,3 +337,10 @@ out of commits.)
       now fades on its own dedicated tween (killed only by its own re-fade / exit).
 - [x] **Verified** — build clean; UI-flow PASS on a cleared save (tutorial path exercised);
       60 autoplay runs 0 failures.
+
+## Round 28
+
+- [x] **Reserve bar wraps into rows of 6** — a hoarded reserve (10+ pieces) used to clip
+      off both screen edges, making those deploy buttons untappable. The bar is now a
+      VBox of centred rows, offset upward per row.
+- [x] **Verified** — build clean; 60 autoplay runs 0 failures (15 wins); UI-flow PASS.
