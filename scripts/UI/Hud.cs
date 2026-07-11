@@ -119,7 +119,7 @@ public partial class Hud : Control
         pause.OffsetTop = 8; pause.OffsetBottom = 72;
         pause.Pressed += () =>
         {
-            Sfx.Play(SfxCue.Select, -12f);
+            Sfx.Play(SfxCue.Select);
             _onPause?.Invoke();
         };
         AddChild(pause);
@@ -266,7 +266,7 @@ public partial class Hud : Control
             b.CustomMinimumSize = new Vector2(0, 60);
             b.Pressed += () =>
             {
-                Sfx.Play(SfxCue.Select, -12f);
+                Sfx.Play(SfxCue.Select);
                 if (_armedIndex == idx)
                 {
                     _armedIndex = -1;

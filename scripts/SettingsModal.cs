@@ -98,7 +98,7 @@ public partial class SettingsModal : Control
         {
             Sfx.SetEnabled(!Sfx.Enabled);
             soundBtn.Text = SoundLabel();
-            Sfx.Play(SfxCue.Select, -12f);   // audible confirmation when turning ON
+            Sfx.Play(SfxCue.Select);   // audible confirmation when turning ON
         };
         content.AddChild(soundBtn);
 

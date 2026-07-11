@@ -103,7 +103,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     private int _cacheStamp = -1;
 
     // ----- AI / scratch (zero-alloc invariant: pooled, reused) -------------
-    private readonly System.Random _rng = new();
+    private System.Random _rng = new();      // reseedable via DebugSeedRng (harness reproducibility)
     private readonly List<HexCoord> _aiMoves = new(64);
     private readonly List<HexCoord> _dangerScratch = new(64);
     private readonly List<HexCoord> _coordScratch = new(64);
@@ -251,7 +251,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         {
             EmitSignal(SignalName.StatusNote,
                 $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
-            Sfx.Play(SfxCue.Boss, -4f);
+            Sfx.Play(SfxCue.Boss);
         }
         else
         {
@@ -672,7 +672,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _run.Reserve.RemoveAt(idx);
         SpawnPiece(kind, PieceSide.Player, coord);
         PlayLandingRing(coord, false);
-        Sfx.Play(SfxCue.Move, -7f);
+        Sfx.Play(SfxCue.Move);
         Haptics.Tap(15);
         PromoteStrandedPawns();
 
@@ -717,7 +717,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         var move = CreateTween();
         if (delay > 0f) move.TweenInterval(delay);
         // The thud rides the (possibly delayed) move animation, not the logic.
-        move.TweenCallback(Callable.From(() => Sfx.Play(SfxCue.Move, -7f)));
+        move.TweenCallback(Callable.From(() => Sfx.Play(SfxCue.Move)));
         move.TweenProperty(piece.Node, "position", target, 0.18f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
 
@@ -1085,7 +1085,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             if (_active.Contains(_coordScratch[i])) _cracked.Add(_coordScratch[i]);
         RefreshAllTileVisuals();
         SetThreat(true);
-        Sfx.Play(SfxCue.Crack, -5f);
+        Sfx.Play(SfxCue.Crack);
         EmitSignal(SignalName.StatusNote, "THE BOARD CRACKS");
     }
 
@@ -1103,7 +1103,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _outerRadius--;
         _stateStamp++;
         _cacheStamp = -1;
-        Sfx.Play(SfxCue.Collapse, -3f);
+        Sfx.Play(SfxCue.Collapse);
         RefreshAllTileVisuals();
         SetThreat(false);
         EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
@@ -1160,7 +1160,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
 
         SetThreat(false);
-        Sfx.Play(SfxCue.Win, -5f);
+        Sfx.Play(SfxCue.Win);
         EmitSignal(SignalName.BattleWon);
     }
 
@@ -1169,7 +1169,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _running = false;
         EndSelect();
         SetThreat(false);
-        Sfx.Play(SfxCue.Lose, -4f);
+        Sfx.Play(SfxCue.Lose);
         EmitSignal(SignalName.BattleLost);
     }
 

@@ -34,7 +34,7 @@ public partial class AutoPlayDriver : Node
     private const int MaxActionsPerBattle = 500;
 
     private HexBoard _board;
-    private readonly Random _rng = new();
+    private Random _rng = new();
     private readonly List<HexCoord> _moves = new(64);   // DumpState scratch
     private bool _won, _lost;
     private int _fails;
@@ -54,8 +54,19 @@ public partial class AutoPlayDriver : Node
         _board.BattleLost += () => _lost = true;
 
         int runs = DefaultRuns;
+        int? seed = null;
         foreach (var arg in OS.GetCmdlineUserArgs())
+        {
             if (arg.StartsWith("runs=")) runs = int.Parse(arg.Substring(5));
+            if (arg.StartsWith("seed=")) seed = int.Parse(arg.Substring(5));
+        }
+        if (seed.HasValue)
+        {
+            // Seed both RNG streams so a caught failure replays exactly.
+            _rng = new Random(seed.Value);
+            _board.DebugSeedRng(seed.Value + 1);
+            GD.Print($"[AUTOPLAY] seeded run: seed={seed.Value}");
+        }
 
         int victories = 0, defeats = 0;
         try

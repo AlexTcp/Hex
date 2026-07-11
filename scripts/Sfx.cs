@@ -42,6 +42,24 @@ public partial class Sfx : Node
 
     private static readonly int CueCount = Enum.GetValues<SfxCue>().Length;
 
+    // The soundscape mix, indexed by SfxCue — tune the balance here, not at
+    // call sites. (A couple of sites intentionally override, e.g. the quieter
+    // enemy-reach select tick.)
+    private static readonly float[] CueVolumeDb =
+    {
+        -12f,  // Select
+        -7f,   // Move
+        -5f,   // Capture
+        -9f,   // Coin
+        -5f,   // Crack
+        -3f,   // Collapse
+        -5f,   // Win
+        -4f,   // Lose
+        -4f,   // Boss
+    };
+
+    public static void Play(SfxCue cue) => Play(cue, CueVolumeDb[(int)cue]);
+
     public override void _Ready()
     {
         _instance = this;

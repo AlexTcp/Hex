@@ -191,7 +191,7 @@ public partial class HexBoard
             AddChild(_moneyPop);
         }
         _moneyPopTween?.Kill();
-        Sfx.Play(SfxCue.Coin, -9f);
+        Sfx.Play(SfxCue.Coin);
         _moneyPop.Text = $"+${amount}";
         _moneyPop.Position = HexLayout.ToWorld(coord, 0.6f);
         _moneyPop.Modulate = new Color(GoldColor.R, GoldColor.G, GoldColor.B, 1f);
@@ -217,7 +217,7 @@ public partial class HexBoard
             t.TweenCallback(Callable.From(() => PlayCaptureBurst(coord)));
             return;
         }
-        Sfx.Play(SfxCue.Capture, -5f);
+        Sfx.Play(SfxCue.Capture);
         if (_captureParticles == null)
         {
             _captureParticles = new CpuParticles3D

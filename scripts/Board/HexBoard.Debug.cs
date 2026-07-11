@@ -25,5 +25,8 @@ public partial class HexBoard
     public bool DebugIsDeathTile(BattlePiece piece, HexCoord dest) => IsDeathTile(piece, dest);
     public int DebugCrackedCount => _cracked.Count;
     public int DebugLockedCount => _locked.Count;
+
+    // Reseed the board's battle RNG so a harness failure replays exactly.
+    public void DebugSeedRng(int seed) => _rng = new System.Random(seed);
 }
 #endif

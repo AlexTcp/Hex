@@ -78,3 +78,14 @@ headless boot. Reference bot win rate ~20–30% (statistical, not exact).
       state machine delegates. ScreenManager loses ~55 lines and one responsibility.
 - [x] **Verified** — build clean; 941/941 unit checks; 80 autoplay runs 0 failures;
       UI-flow PASS; boot clean; no mojibake.
+
+## Round 5
+
+- [x] **Audio mix in one table** — `Sfx.CueVolumeDb` holds per-cue defaults; `Play(cue)`
+      overload added; 13 call sites dropped their dB literals (the board-select −10 and
+      enemy-reach −14 variants intentionally keep overrides). Identical mix values.
+- [x] **Reproducible harness runs** — `seed=` user arg seeds the bot RNG and the board's
+      battle RNG (DEBUG-only `DebugSeedRng`; the field lost `readonly`). Verified: two
+      `runs=5 seed=42` sweeps produced bit-identical outcomes. Documented in CLAUDE.md.
+- [x] **Verified** — build clean; 941/941 unit checks; 80 autoplay runs 0 failures;
+      UI-flow PASS.
