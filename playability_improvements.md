@@ -344,3 +344,10 @@ out of commits.)
       off both screen edges, making those deploy buttons untappable. The bar is now a
       VBox of centred rows, offset upward per row.
 - [x] **Verified** — build clean; 60 autoplay runs 0 failures (15 wins); UI-flow PASS.
+
+## Round 29
+
+- [x] **Export sanity** — `export_presets.cfg` uses all_resources with no filters, so the
+      new `audio/*.wav` ship correctly; added `exclude_filter="dev/*"` so the harness
+      scenes stay out of APKs (their scripts are release stubs anyway).
+- [x] **Verified** — build clean; headless boot clean.
