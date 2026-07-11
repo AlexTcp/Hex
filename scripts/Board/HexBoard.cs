@@ -54,7 +54,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     [Signal] public delegate void MoneyChangedEventHandler(int money);
     [Signal] public delegate void ScoreChangedEventHandler(int score);
     [Signal] public delegate void EnemiesChangedEventHandler(int remaining);
-    [Signal] public delegate void ArmyChangedEventHandler(int onBoard, int reserve);
+    [Signal] public delegate void ArmyChangedEventHandler();   // army/reserve membership changed
     [Signal] public delegate void CrumbleChangedEventHandler(int turnsLeft, bool cracking);
     [Signal] public delegate void ThreatChangedEventHandler(bool inDanger);
     [Signal] public delegate void StatusNoteEventHandler(string note);
@@ -428,8 +428,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         return n;
     }
 
-    private void EmitArmyCounts() =>
-        EmitSignal(SignalName.ArmyChanged, CountSide(PieceSide.Player), _run?.Reserve.Count ?? 0);
+    private void EmitArmyCounts() => EmitSignal(SignalName.ArmyChanged);
 
     // ----- Input -------------------------------------------------------------
 
@@ -804,19 +803,21 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
     }
 
+    private static readonly PieceKind[] PromotionOptions =
+        { PieceKind.Knight, PieceKind.Rook, PieceKind.Bishop };
+
     // Prefer a promotion kind that can actually move from this tile — a knight
     // on a collapsed radius-1 board has no legal leaps, and promoting into an
     // immobile piece would re-strand it.
     private PieceKind PickPromotionKind(BattlePiece pawn)
     {
-        PieceKind[] options = { PieceKind.Knight, PieceKind.Rook, PieceKind.Bishop };
-        var pick = options[_rng.Next(options.Length)];
+        var pick = PromotionOptions[_rng.Next(PromotionOptions.Length)];
         PieceRules.LegalMoves(pick, pawn.Side, pawn.Coord, this, _aiMoves);
         if (_aiMoves.Count > 0) return pick;
-        for (int i = 0; i < options.Length; i++)
+        for (int i = 0; i < PromotionOptions.Length; i++)
         {
-            PieceRules.LegalMoves(options[i], pawn.Side, pawn.Coord, this, _aiMoves);
-            if (_aiMoves.Count > 0) return options[i];
+            PieceRules.LegalMoves(PromotionOptions[i], pawn.Side, pawn.Coord, this, _aiMoves);
+            if (_aiMoves.Count > 0) return PromotionOptions[i];
         }
         return PieceKind.Rook;
     }

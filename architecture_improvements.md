@@ -101,3 +101,14 @@ headless boot. Reference bot win rate ~20–30% (statistical, not exact).
       CrumbleTurns; HexBoard delegates; unit-locked (base 2, Stonemason 3, null-safe).
 - [x] **Verified** — build clean; 954/954 unit checks; 80 autoplay runs 0 failures;
       UI-flow PASS.
+
+## Round 7
+
+- [x] **Static promotion options** — `PromotionOptions` is a static readonly array; no
+      per-promotion allocation.
+- [x] **Slim the ArmyChanged signal** — now parameterless; the unused O(n) CountSide per
+      emit is gone; ScreenManager handler updated.
+- [x] **Cover EnemyPlanner's reservoir branch** — unit check: a lone enemy with no player
+      pieces still takes a sampled legal move (suite: 955).
+- [x] **Verified** — build clean; 955/955 unit checks; 80 autoplay runs 0 failures (24
+      wins); UI-flow PASS.

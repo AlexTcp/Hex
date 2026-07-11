@@ -207,6 +207,14 @@ public partial class UnitTestRunner : Node
             out chosen, out dest, out capture);
         Check(acted && !capture && dest.Distance(far.Coord) < rook.Coord.Distance(far.Coord),
             "planner approaches when no capture exists");
+
+        // Reservoir fallback: no player pieces at all → no capture, no approach
+        // target — the enemy still takes a uniformly-sampled legal move.
+        pieces = Pieces(rook);
+        acted = EnemyPlanner.ChooseAction(pieces, board, Occupy(pieces), rng, scratch,
+            out chosen, out dest, out capture);
+        Check(acted && !capture && chosen == rook && dest != rook.Coord,
+            "planner falls back to a random legal move");
     }
 
     // ----- BattlePlanner --------------------------------------------------------
