@@ -711,8 +711,13 @@ public partial class HexBoard : Node3D, IBattleQuery
     private void ClearHighlights()
     {
         StopHighlightPulse();
-        foreach (var h in _highlighted) RefreshTileVisual(h);
+        // Empty the set BEFORE repainting: RefreshTileVisual skips any coord
+        // still in _highlighted ("selection paint wins"), so refreshing first
+        // left every highlight stuck on the board forever.
+        _coordScratch.Clear();
+        foreach (var h in _highlighted) _coordScratch.Add(h);
         _highlighted.Clear();
+        for (int i = 0; i < _coordScratch.Count; i++) RefreshTileVisual(_coordScratch[i]);
     }
 
     // Exact danger test: could any non-stunned enemy capture `dest` next turn,

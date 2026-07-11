@@ -223,3 +223,20 @@ out of commits.)
       board glow kept for after purchase.
 - [x] **Verified** — build clean; windowed UI-flow PASS with 7 shots reviewed; 80 autoplay
       runs 0 failures (25 wins); game-over stat rows render correctly.
+
+## Round 17
+
+- [x] **Fix stale highlight paint (pre-existing visual bug)** — screenshot diffing showed a
+      deselected bishop's four gold tiles persisting into the next inspection.
+      `ClearHighlights` refreshed each tile BEFORE removing it from `_highlighted`, and
+      `RefreshTileVisual` early-returns for highlighted coords ("selection paint wins") —
+      so no deselection ever repainted; stale gold accumulated until the next full board
+      refresh (crumble/lock/battle-start), silently lying about legal moves. Now empties
+      the set into the pooled scratch first, then repaints. Re-shot to confirm only live
+      paint remains.
+- [x] **Fix inspection chip for real** — the round-16 upward-grow approach still broke when
+      autowrapped text changed while hidden (label overflowed both panel edges). Now a
+      fixed-size bottom-anchored chip (sized for the longest description) with a
+      vertically-centred label. Screenshot-confirmed with the longest text.
+- [x] **Verified** — build clean; windowed UI-flow PASS, shots reviewed; 80 autoplay runs
+      0 failures (24 wins).

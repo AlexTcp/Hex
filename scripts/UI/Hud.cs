@@ -122,18 +122,19 @@ public partial class Hud : Control
         AddChild(pause);
 
         // --- Bottom-left: inspection chip (selected piece / enemy reach / tile) ---
-        // Anchored to the bottom edge and grows UPWARD — the text length varies
-        // per piece and a fixed-height panel clips off-screen.
+        // Fixed-size and bottom-anchored: anchored containers don't reliably
+        // re-grow when autowrapped text changes while hidden, so the chip is
+        // sized for the longest description and the label centres within it.
         _inspectChip = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore };
         _inspectChip.AddThemeStyleboxOverride("panel",
             UiTheme.Box(UiTheme.PanelRaised, 10, 1, UiTheme.PanelBorder, 16, 10));
         _inspectChip.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        _inspectChip.GrowVertical = GrowDirection.Begin;
-        _inspectChip.OffsetLeft = 24; _inspectChip.OffsetTop = -24; _inspectChip.OffsetBottom = -24;
+        _inspectChip.OffsetLeft = 24; _inspectChip.OffsetRight = 494;
+        _inspectChip.OffsetTop = -164; _inspectChip.OffsetBottom = -24;
         _inspectChip.Visible = false;
         _inspectLabel = UiTheme.MakeLabel("", UiTheme.BodySmallSize, UiTheme.Text);
         _inspectLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _inspectLabel.CustomMinimumSize = new Vector2(330, 0);
+        _inspectLabel.VerticalAlignment = VerticalAlignment.Center;
         _inspectChip.AddChild(_inspectLabel);
         AddChild(_inspectChip);
 
