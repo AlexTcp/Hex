@@ -454,17 +454,31 @@ public partial class HexBoard : Node3D, IBattleQuery
 
     private void ApplyLockmaker()
     {
-        _coordScratch.Clear();
-        foreach (var c in _active)
-            if (!_occupied.ContainsKey(c)) _coordScratch.Add(c);
-        for (int n = 0; n < 3 && _coordScratch.Count > 0; n++)
+        // The locks must never strand the whole army (e.g. a lone corner
+        // bishop whose only two on-board diagonals both get locked): the
+        // battle would start with no possible player action, and since the
+        // lock timer only ticks on player actions it would never expire.
+        for (int attempt = 0; attempt < 8; attempt++)
         {
-            int idx = _rng.Next(_coordScratch.Count);
-            _locked.Add(_coordScratch[idx]);
-            _coordScratch[idx] = _coordScratch[_coordScratch.Count - 1];
-            _coordScratch.RemoveAt(_coordScratch.Count - 1);
+            _locked.Clear();
+            _coordScratch.Clear();
+            foreach (var c in _active)
+                if (!_occupied.ContainsKey(c)) _coordScratch.Add(c);
+            for (int n = 0; n < 3 && _coordScratch.Count > 0; n++)
+            {
+                int idx = _rng.Next(_coordScratch.Count);
+                _locked.Add(_coordScratch[idx]);
+                _coordScratch[idx] = _coordScratch[_coordScratch.Count - 1];
+                _coordScratch.RemoveAt(_coordScratch.Count - 1);
+            }
+            if (PlayerHasAnyAction())
+            {
+                _lockTurnsLeft = 2;
+                return;
+            }
         }
-        _lockTurnsLeft = 2;
+        _locked.Clear();
+        _lockTurnsLeft = 0;
     }
 
     private void PlaceUpgradeMarkers()

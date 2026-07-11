@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Hex"
-config/description="A minimalist hex-grid hunt. Choose one of 14 movement archetypes and outmaneuver the hunters — clear waves, build capture combos, and don't get caught."
+config/description="A hex-chess roguelike. Command a small army of ivory pieces across 12 battles: capture every black piece before the board crumbles, then spend your winnings on new pieces, rule-bending Gambits, and tile upgrades."
 run/main_scene="res://scenes/game.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"

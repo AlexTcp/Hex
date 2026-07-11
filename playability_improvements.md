@@ -55,3 +55,20 @@ first-boss difficulty cliff.
 - [x] **Verified** — build clean; 60 bot runs 0 failures (2 victories); headless boot clean.
       Note: the bot bypasses the UI screens, so Round 3 should add a UI-flow smoke test that
       drives the real screens (Title → NewRun → battle → Shop → Pause → GameOver).
+
+## Round 3
+
+- [x] **UI-flow smoke test** — `dev/uiflow.tscn`, `scripts/Dev/UiFlowDriver.cs`,
+      `scripts/Dev/BotBrain.cs` (bot logic extracted from AutoPlayDriver; shared by both
+      harnesses). Drives the real `game.tscn` by pressing actual buttons: PLAY → REROLL →
+      BEGIN RUN → tutorial skip → pause/resume → battle (bot) → Shop buy + NEXT BATTLE →
+      pause → ABANDON → Title, then a deliberately-lost run (suicidal bot mode) → Game Over →
+      NEW RUN → back → Title. PASS, exit 0. Run wrapper must back up/restore
+      `%APPDATA%\Godot\app_userdata\Hex\hex.cfg` (the test touches the real save).
+- [x] **Fix Lockmaker battle-start softlock** (found by the 60-run sweep) — a lone corner
+      bishop's only two on-board diagonals could both be locked; battle started with zero
+      player actions and the lock timer (which ticks on player actions) never expired.
+      `ApplyLockmaker` now re-rolls the lock set until the player has an action (8 tries,
+      then locks nothing). Verified: 150 autoplay runs, 0 failures.
+- [x] **Fix stale project description** — `project.godot` now describes the chess-battle
+      roguelike instead of the old token hunt.

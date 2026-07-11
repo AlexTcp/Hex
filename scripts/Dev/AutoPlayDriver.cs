@@ -35,8 +35,7 @@ public partial class AutoPlayDriver : Node
 
     private HexBoard _board;
     private readonly Random _rng = new();
-    private readonly List<HexCoord> _moves = new(64);
-    private readonly List<BattlePiece> _mine = new(16);
+    private readonly List<HexCoord> _moves = new(64);   // DumpState scratch
     private bool _won, _lost;
     private int _fails;
 
@@ -106,63 +105,16 @@ public partial class AutoPlayDriver : Node
         }
     }
 
-    // One player action: sometimes a deploy, otherwise a move (captures first).
+    // One player action via the shared bot brain; false = playability failure.
     private bool TakeOneAction(RunState run)
     {
-        if (run.Reserve.Count > 0 && _rng.Next(4) == 0 && TryDeploy(run)) return true;
-
-        _mine.Clear();
-        foreach (var p in _board.DebugPieces)
-            if (p.Alive && p.Side == PieceSide.Player) _mine.Add(p);
-        Shuffle(_mine);
-
-        // Score every legal (piece, destination) pair the way a human reads the
-        // board: safe captures > unsafe captures (by victim value), then safe
-        // approach moves, then desperate ones. A dash of noise for coverage.
-        BattlePiece movePiece = null;
-        HexCoord moveDest = default;
-        int bestRank = int.MinValue;
-        foreach (var p in _mine)
+        var result = BotBrain.TakeOneAction(_board, run, _rng);
+        if (result == BotActionResult.Inconsistent)
         {
-            PieceRules.LegalMoves(p.Kind, PieceSide.Player, p.Coord, _board, _moves);
-            for (int m = 0; m < _moves.Count; m++)
-            {
-                var dest = _moves[m];
-                bool capture = _board.OccupantSide(dest) == PieceSide.Enemy;
-                bool safe = !_board.DebugIsDeathTile(p, dest);
-                int rank;
-                if (capture)
-                    rank = (safe ? 4000 : 3000) + VictimValueAt(dest) * 10;
-                else
-                    rank = (safe ? 2000 : 1000) - DistanceToNearestEnemy(dest) * 10;
-                rank += _rng.Next(10);
-                if (rank > bestRank)
-                {
-                    bestRank = rank;
-                    movePiece = p;
-                    moveDest = dest;
-                }
-            }
-        }
-        if (movePiece == null) return run.Reserve.Count > 0 && TryDeploy(run);
-
-        _board.DebugTap(movePiece.Coord);
-        if (!_board.DebugIsHighlighted(moveDest))
-        {
-            Fail($"legal move {movePiece.Kind} {movePiece.Coord}->{moveDest} not highlighted after select");
+            Fail("legal move not highlighted after select");
             return false;
         }
-        _board.DebugTap(moveDest);
-        return true;
-    }
-
-    private bool TryDeploy(RunState run)
-    {
-        _board.BeginDeploy(_rng.Next(run.Reserve.Count));
-        var targets = new List<HexCoord>(_board.DebugHighlighted);
-        if (targets.Count == 0) return false;   // board disarmed itself: no room
-        _board.DebugTap(targets[_rng.Next(targets.Count)]);
-        return true;
+        return result != BotActionResult.NoAction;
     }
 
     // Mirrors ShopScreen's purchase effects so gambit / tile-upgrade / army
@@ -204,39 +156,10 @@ public partial class AutoPlayDriver : Node
         }
     }
 
-    private void Shuffle(List<BattlePiece> list)
-    {
-        for (int i = list.Count - 1; i > 0; i--)
-        {
-            int j = _rng.Next(i + 1);
-            (list[i], list[j]) = (list[j], list[i]);
-        }
-    }
-
     private void Fail(string msg)
     {
         _fails++;
         GD.PrintErr($"[AUTOPLAY] FAIL: {msg}");
-    }
-
-    private int VictimValueAt(HexCoord dest)
-    {
-        foreach (var p in _board.DebugPieces)
-            if (p.Alive && p.Side == PieceSide.Enemy && p.Coord == dest)
-                return PieceCatalog.ValueOf(p.Kind);
-        return 0;
-    }
-
-    private int DistanceToNearestEnemy(HexCoord from)
-    {
-        int best = int.MaxValue;
-        foreach (var p in _board.DebugPieces)
-        {
-            if (!p.Alive || p.Side != PieceSide.Enemy) continue;
-            int d = p.Coord.Distance(from);
-            if (d < best) best = d;
-        }
-        return best;
     }
 
     private void DumpState(RunState run)
