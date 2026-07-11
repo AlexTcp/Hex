@@ -43,6 +43,13 @@ public sealed class RunState
 
     public bool Has(GambitKind g) => Gambits.Contains(g);
 
+    // A bought piece joins the army, overflowing to the reserve at the cap.
+    public void AddPiece(PieceKind kind)
+    {
+        if (Army.Count < ArmyCap) Army.Add(kind);
+        else Reserve.Add(kind);
+    }
+
     public static bool IsBossBattle(int battle) => battle % 4 == 0;
 
     // Starter pool: everything but the Queen (she's a late-run shop prize).

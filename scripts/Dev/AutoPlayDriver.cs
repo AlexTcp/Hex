@@ -155,13 +155,12 @@ public partial class AutoPlayDriver : Node
         {
             for (int i = 0; i < 2; i++)
             {
-                var kind = RollPieceOffer(run);
+                var kind = ShopOffers.RollPieceOffer(run.Battle, _rng);
                 int price = PieceCatalog.Info(kind).Price;
                 if (run.Army.Count + run.Reserve.Count < 7 && run.Money >= price)
                 {
                     run.Money -= price;
-                    if (run.Army.Count < RunState.ArmyCap) run.Army.Add(kind);
-                    else run.Reserve.Add(kind);
+                    run.AddPiece(kind);
                 }
             }
             // Reroll only while flush and still short on pieces.
@@ -182,28 +181,13 @@ public partial class AutoPlayDriver : Node
         if (_rng.Next(5) < 2)
         {
             var up = TileUpgradeCatalog.All[_rng.Next(TileUpgradeCatalog.All.Length)];
-            var candidates = new List<HexCoord>();
-            HexCoord.Within(2, candidates);
-            candidates.RemoveAll(c => run.TileUpgrades.ContainsKey(c));
-            if (candidates.Count > 0 && run.Money >= up.Price)
+            var coord = ShopOffers.RollUpgradeCoord(run, _rng);
+            if (coord.HasValue && run.Money >= up.Price)
             {
                 run.Money -= up.Price;
-                run.TileUpgrades[candidates[_rng.Next(candidates.Count)]] = up.Kind;
+                run.TileUpgrades[coord.Value] = up.Kind;
             }
         }
-    }
-
-    // Same gating as ShopScreen.RollPieceOffer: uniform over kinds, Queen
-    // withheld before battle 6.
-    private PieceKind RollPieceOffer(RunState run)
-    {
-        for (int attempt = 0; attempt < 8; attempt++)
-        {
-            var kind = (PieceKind)_rng.Next(6);
-            if (kind == PieceKind.Queen && run.Battle < 6) continue;
-            return kind;
-        }
-        return PieceKind.Pawn;
     }
 
     private void Fail(string msg)

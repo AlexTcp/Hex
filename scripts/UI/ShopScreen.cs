@@ -167,13 +167,9 @@ public partial class ShopScreen : Control
         // Two pieces (stronger kinds appear as the run progresses).
         for (int i = 0; i < 2; i++)
         {
-            var kind = RollPieceOffer();
+            var kind = ShopOffers.RollPieceOffer(_run.Battle, _rng);
             var info = PieceCatalog.Info(kind);
-            AddOffer("PIECE", info.Name, info.Description, info.Price, () =>
-            {
-                if (_run.Army.Count < RunState.ArmyCap) _run.Army.Add(kind);
-                else _run.Reserve.Add(kind);
-            });
+            AddOffer("PIECE", info.Name, info.Description, info.Price, () => _run.AddPiece(kind));
         }
 
         // One unowned gambit (if any remain).
@@ -188,7 +184,7 @@ public partial class ShopScreen : Control
         // The claimed tile is lit gold on the board behind this screen — raw
         // coordinates mean nothing to a player.
         var up = TileUpgradeCatalog.All[_rng.Next(TileUpgradeCatalog.All.Length)];
-        var coord = RollUpgradeCoord();
+        var coord = ShopOffers.RollUpgradeCoord(_run, _rng);
         _onPreviewTile?.Invoke(coord);
         if (coord.HasValue)
         {
@@ -235,18 +231,6 @@ public partial class ShopScreen : Control
         }
     }
 
-    private PieceKind RollPieceOffer()
-    {
-        int battle = _run.Battle;
-        for (int attempt = 0; attempt < 8; attempt++)
-        {
-            var kind = (PieceKind)_rng.Next(6);
-            if (kind == PieceKind.Queen && battle < 6) continue;
-            return kind;
-        }
-        return PieceKind.Pawn;
-    }
-
     private GambitInfo? RollGambitOffer()
     {
         // Collect unowned gambits; pick one at random.
@@ -261,17 +245,6 @@ public partial class ShopScreen : Control
             if (pick-- == 0) return g;
         }
         return null;
-    }
-
-    private HexCoord? RollUpgradeCoord()
-    {
-        // Any un-upgraded hex within radius 2 — central enough to matter in
-        // every battle size, and safe from all but the deepest crumble.
-        var candidates = new List<HexCoord>();
-        HexCoord.Within(2, candidates);
-        candidates.RemoveAll(c => _run.TileUpgrades.ContainsKey(c));
-        if (candidates.Count == 0) return null;
-        return candidates[_rng.Next(candidates.Count)];
     }
 
     private void AddOffer(string tag, string name, string desc, int price, Action apply,
