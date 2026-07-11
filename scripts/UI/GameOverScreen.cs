@@ -32,6 +32,7 @@ public partial class GameOverScreen : Control
     private Label _earnedValue;
     private Control _newBestChip;
     private Tween _titleTween;
+    private CpuParticles2D _confetti;
 
     public GameOverScreen(Action onNewRun, Action onTitle)
     {
@@ -48,6 +49,36 @@ public partial class GameOverScreen : Control
 
     private void Build()
     {
+        // Gold confetti for the victory presentation only (CpuParticles2D —
+        // GL Compatibility safe; the texture is a code-made white square).
+        var img = Image.CreateEmpty(6, 6, false, Image.Format.Rgba8);
+        img.Fill(Colors.White);
+        _confetti = new CpuParticles2D
+        {
+            Texture = ImageTexture.CreateFromImage(img),
+            Emitting = false,
+            Amount = 48,
+            Lifetime = 3.2,
+            Preprocess = 1.2,               // already falling when the screen fades in
+            EmissionShape = CpuParticles2D.EmissionShapeEnum.Rectangle,
+            EmissionRectExtents = new Vector2(430, 6),
+            Direction = new Vector2(0, 1),
+            Spread = 25f,
+            Gravity = new Vector2(0, 260),
+            InitialVelocityMin = 40f,
+            InitialVelocityMax = 120f,
+            AngularVelocityMin = -220f,
+            AngularVelocityMax = 220f,
+            ScaleAmountMin = 0.7f,
+            ScaleAmountMax = 1.4f,
+            Color = UiTheme.Accent,
+        };
+        _confetti.VisibilityChanged += () =>
+        {
+            if (!IsVisibleInTree()) _confetti.Emitting = false;
+        };
+        AddChild(_confetti);
+
         var center = new CenterContainer { MouseFilter = MouseFilterEnum.Ignore };
         center.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(center);
@@ -114,6 +145,13 @@ public partial class GameOverScreen : Control
         if (_lostValue != null) _lostValue.Text = run?.PiecesLost.ToString() ?? "—";
         if (_earnedValue != null) _earnedValue.Text = run != null ? $"${run.MoneyEarned}" : "—";
         if (_newBestChip != null) _newBestChip.Visible = newBest;
+
+        if (_confetti != null)
+        {
+            _confetti.Position = new Vector2(GetViewportRect().Size.X / 2f, -12f);
+            _confetti.Emitting = victory;
+            if (victory) _confetti.Restart();
+        }
 
         // One-time title fade/scale (no bounce — the moment should feel weighty).
         if (_title != null)

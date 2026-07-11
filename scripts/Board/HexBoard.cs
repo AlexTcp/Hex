@@ -1344,6 +1344,14 @@ public partial class HexBoard : Node3D, IBattleQuery
                 _run.Army.Add(_pieces[i].Kind);
 
         _run.Battle++;
+
+        // Crossing the finish line rewards the army you kept alive.
+        if (_run.Battle > RunState.FinalBattle && _run.Army.Count > 0)
+        {
+            AddScore(200 * _run.Army.Count);
+            EmitSignal(SignalName.StatusNote, $"SURVIVORS +{200 * _run.Army.Count}");
+        }
+
         SetThreat(false);
         Sfx.Play("win", -5f);
         EmitSignal(SignalName.BattleWon);

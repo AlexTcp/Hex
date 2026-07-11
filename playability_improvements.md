@@ -249,3 +249,14 @@ out of commits.)
       gold "+$2" above the capture hex, HUD money/score/enemies all consistent.
 - [x] **Verified** — build clean; windowed UI-flow PASS with 8 shots; no new issues found
       in render review.
+
+## Round 19
+
+- [x] **Victory celebration** — gold confetti (CpuParticles2D with a code-made square
+      texture, preprocessed so it's mid-fall when the screen fades in) rains over the
+      CROWN CLAIMED panel; stops when the screen hides. Screenshot-verified via the
+      driver's new forced-victory presentation shot (09-victory).
+- [x] **Survivors bonus** — the final win scores +200 per surviving army piece
+      ("SURVIVORS +N"), applied before BattleWon so the end screen shows it.
+- [x] **Verified** — build clean; windowed UI-flow PASS with 9 shots (victory confetti
+      confirmed in-render); 80 autoplay runs 0 failures (24 wins).

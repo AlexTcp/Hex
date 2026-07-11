@@ -22,6 +22,7 @@ using System;
 using System.Threading.Tasks;
 using HexGame.Board;
 using HexGame.Chess;
+using HexGame.UI;
 #endif
 
 namespace HexGame.Dev;
@@ -180,6 +181,22 @@ public partial class UiFlowDriver : Node
         GD.Print("[UIFLOW] deliberate defeat → game over");
         if (await ExpectButton("NEW RUN") == null) return;
         await Shot("07-gameover");
+
+        // Force the victory presentation for a shot (a real one needs 12 wins),
+        // then restore the defeat state before continuing the flow.
+        if (_shotDir != null)
+        {
+            var go = FindNode<GameOverScreen>(this);
+            if (go != null)
+            {
+                go.Present(victory: true, battle: RunState.FinalBattle, score: 99999,
+                    newBest: true, run: _session.CurrentRun);
+                await Shot("09-victory");
+                go.Present(victory: false, battle: _session.CurrentRun.Battle,
+                    score: _session.CurrentRun.Score, newBest: false, run: _session.CurrentRun);
+            }
+        }
+
         if (!await PressButton("NEW RUN")) return;
         if (await ExpectButton("BEGIN RUN") == null) return;
         if (!await PressButton("‹")) return;   // NewRun back chevron
