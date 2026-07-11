@@ -629,6 +629,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         piece.Node.MaterialOverride = PieceVisuals.SelectedMaterial;
         PositionSelectRing(piece.Coord);
         StartHighlightPulse();
+        Sfx.Play("select", -10f);
 
         // A blocked piece still selects (gold glow), but with no lit tiles the
         // tap reads as dead — say why.
@@ -812,6 +813,8 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         var move = CreateTween();
         if (delay > 0f) move.TweenInterval(delay);
+        // The thud rides the (possibly delayed) move animation, not the logic.
+        move.TweenCallback(Callable.From(() => Sfx.Play("move", -7f)));
         move.TweenProperty(piece.Node, "position", target, 0.18f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
 
@@ -1198,6 +1201,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             if (_active.Contains(_coordScratch[i])) _cracked.Add(_coordScratch[i]);
         RefreshAllTileVisuals();
         SetThreat(true);
+        Sfx.Play("crack", -5f);
         EmitSignal(SignalName.StatusNote, "THE BOARD CRACKS");
     }
 
@@ -1215,6 +1219,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _outerRadius--;
         _stateStamp++;
         _cacheStamp = -1;
+        Sfx.Play("collapse", -3f);
         RefreshAllTileVisuals();
         SetThreat(false);
         EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
@@ -1261,6 +1266,7 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         _run.Battle++;
         SetThreat(false);
+        Sfx.Play("win", -5f);
         EmitSignal(SignalName.BattleWon);
     }
 
@@ -1269,6 +1275,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _running = false;
         EndSelect();
         SetThreat(false);
+        Sfx.Play("lose", -4f);
         EmitSignal(SignalName.BattleLost);
     }
 
@@ -1428,6 +1435,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             AddChild(_moneyPop);
         }
         _moneyPopTween?.Kill();
+        Sfx.Play("coin", -9f);
         _moneyPop.Text = $"+${amount}";
         _moneyPop.Position = HexLayout.ToWorld(coord, 0.6f);
         _moneyPop.Modulate = new Color(GoldColor.R, GoldColor.G, GoldColor.B, 1f);
@@ -1453,6 +1461,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             t.TweenCallback(Callable.From(() => PlayCaptureBurst(coord)));
             return;
         }
+        Sfx.Play("capture", -5f);
         if (_captureParticles == null)
         {
             _captureParticles = new CpuParticles3D

@@ -109,3 +109,16 @@ out of commits.)
       deploys, Pawn Ambition promotions, and the battle-clear payout at board centre.
 - [x] **"NO LEGAL MOVES" note** — selecting a blocked piece now says why no tiles lit.
 - [x] **Verified** — build clean; 100 autoplay runs 0 failures (31 wins); boot clean.
+
+## Round 7
+
+- [x] **Add sound** — the game was fully silent (missing-but-expected). Synthesized a quiet
+      tournament-room SFX set offline (`audio/*.wav`, 1–33 KB each; recipe committed as
+      `dev/gen_sfx.py`): select tick, felt move thud, capture thud+ring, coin ting, wooden
+      crack, collapse rumble, win chime, lose sting. New `Sfx` autoload (round-robin
+      6-player pool, safe no-op headless/missing). Wired: select / move (rides the possibly
+      delayed move tween) / capture (rides the strike delay) / coin on money pops / crack /
+      collapse / win / lose.
+- [x] **Verified** — build clean; assets imported (`--headless --import`); 100 autoplay runs
+      0 failures; UI-flow PASS; boot clean. (Pre-existing exit-time "resources still in use"
+      warning noted — static shared resources by design, exit-only, not a play issue.)

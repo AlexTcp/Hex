@@ -22,6 +22,7 @@ boot_splash/bg_color=Color(0.043, 0.055, 0.078, 1)
 
 DebugLog="*res://scripts/DebugLog.cs"
 GameSession="*res://scripts/GameSession.cs"
+Sfx="*res://scripts/Sfx.cs"
 
 [display]
 
