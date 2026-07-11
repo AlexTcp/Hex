@@ -33,9 +33,10 @@ public static class BotBrain
     private static readonly List<BattlePiece> Mine = new(16);
 
     // suicidal: invert the goal — court danger, refuse captures — so a flow
-    // test can reach the defeat path deterministically.
+    // test can reach the defeat path deterministically. stall: play safe,
+    // capture-averse, keep-away moves so the crumble can arrive on camera.
     public static BotActionResult TakeOneAction(HexBoard board, RunState run, Random rng,
-        bool suicidal = false)
+        bool suicidal = false, bool stall = false)
     {
         Mine.Clear();
         foreach (var p in board.DebugPieces)
@@ -44,7 +45,7 @@ public static class BotBrain
 
         // Reinforce eagerly when the board presence is thin; otherwise trickle
         // the reserve in occasionally.
-        if (!suicidal && run.Reserve.Count > 0
+        if (!suicidal && !stall && run.Reserve.Count > 0
             && (Mine.Count < 4 || rng.Next(6) == 0)
             && TryDeploy(board, run, rng))
             return BotActionResult.Deployed;
@@ -64,7 +65,10 @@ public static class BotBrain
                 bool capture = board.OccupantSide(dest) == PieceSide.Enemy;
                 bool safe = !board.DebugIsDeathTile(p, dest);
                 int rank;
-                if (suicidal)
+                if (stall)
+                    rank = (safe ? 3000 : 0) + (capture ? -2000 : 0)
+                        + DistanceToNearestEnemy(board, dest) * 10;
+                else if (suicidal)
                     rank = (capture ? 0 : 1000) + (safe ? 0 : 2000)
                         - DistanceToNearestEnemy(board, dest) * 10;
                 else if (capture)

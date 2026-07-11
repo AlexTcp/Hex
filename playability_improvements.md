@@ -285,3 +285,28 @@ out of commits.)
       in the battle-start flourish ("BATTLE 5: CAVALRY"). Never on bosses or the finale.
 - [x] **Measured** — 200 runs, 0 failures, 28% win rate; per-battle clear rates within
       variance of the reference curve (finale 60%). UI-flow PASS.
+
+## Round 23
+
+- [x] **CLAUDE.md sync for rounds 19–22** — survivors bonus, themed rosters, stun visual,
+      inspection chip, screenshot-mode harness docs.
+
+## Round 24
+
+- [x] **Screenshot the remaining unseen board states** — the flow now plays through real
+      shop continues (buying each visit) to battle 4, stalls battle 3 on safe keep-away
+      moves (new BotBrain stall mode) until the ring cracks for the cracked-board shot,
+      then captures Lockmaker's frozen tiles at battle 4's start. Both render correctly
+      (rust smoulder ring + danger vignette; cold-blue locks).
+- [x] **Fix invisible-HUD transition race (pre-existing, found by these shots)** — GoState
+      never killed in-flight cross-fades: the shop's 0.4s HUD fade-out kept writing after a
+      quick NEXT BATTLE's 0.22s fade-in finished, leaving the scrim dark and the HUD fully
+      transparent for the whole battle for any fast-tapping player. GoState now kills
+      transition tweens and hides ghosted third screens on every state change.
+- [x] **Fix status flourish rendering at the screen's top-left (pre-existing)** — Flourish
+      reset `Position = (0,0)`, overriding the centre anchors, so every note ("VICTORY",
+      boss announcements…) drew from the top-left corner and long text clipped off-screen.
+      The note is now a full-rect centred autowrapping label; boss announcement verified
+      dead-centre in-render.
+- [x] **Verified** — build clean; 80 autoplay runs 0 failures (31 wins); UI-flow PASS both
+      windowed (shots reviewed) and headless.

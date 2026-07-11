@@ -56,6 +56,8 @@ public partial class ScreenManager : Node
     private Transform3D _camRest;
     private Tween _driftTween;
     private Tween _shakeTween;
+    private readonly System.Collections.Generic.List<Tween> _transitionTweens = new();
+    private Control[] _allScreens;
 
     public ScreenManager(HexBoard board, Camera3D camera, GameSession session, Control root)
     {
@@ -84,6 +86,8 @@ public partial class ScreenManager : Node
         _dangerTween?.Kill();
         _driftTween?.Kill();
         _shakeTween?.Kill();
+        foreach (var t in _transitionTweens) t?.Kill();
+        _transitionTweens.Clear();
         if (_board != null)
         {
             _board.MoneyChanged -= OnMoneyChanged;
@@ -123,6 +127,7 @@ public partial class ScreenManager : Node
         _gameOver = new GameOverScreen(GoNewRun, GoTitle);
         _tutorial = new TutorialOverlay(OnTutorialComplete);
 
+        _allScreens = new Control[] { _hud, _title, _newRun, _shop, _pause, _gameOver };
         foreach (Control c in new Control[] { _hud, _title, _newRun, _shop, _pause, _gameOver, _tutorial })
         {
             c.Visible = false;
@@ -265,6 +270,20 @@ public partial class ScreenManager : Node
         _state = state;
         UpdatePicking();
 
+        // Kill any in-flight transition first: a slower outgoing fade (e.g. the
+        // shop's 0.4s) would otherwise keep writing after a quick next
+        // transition finished, leaving the scrim dark and the HUD transparent
+        // for a whole battle when the player taps NEXT BATTLE fast.
+        foreach (var t in _transitionTweens) t?.Kill();
+        _transitionTweens.Clear();
+
+        // A killed outgoing fade never runs its hide callback — make sure no
+        // third screen stays ghosted at partial alpha behind this transition.
+        if (_allScreens != null)
+            foreach (var s in _allScreens)
+                if (s != screen && s != _currentScreen && s.Visible)
+                    s.Visible = false;
+
         _scrim.MouseFilter = screen == _hud ? Control.MouseFilterEnum.Ignore : Control.MouseFilterEnum.Stop;
         FadeAlpha(_scrim, "color:a", scrimAlpha, dur);
 
@@ -380,5 +399,6 @@ public partial class ScreenManager : Node
         var t = CreateTween();
         t.TweenProperty(c, prop, to, dur).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
         if (onDone != null) t.TweenCallback(Callable.From(onDone));
+        _transitionTweens.Add(t);
     }
 }

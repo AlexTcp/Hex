@@ -98,10 +98,13 @@ public partial class Hud : Control
         AddChild(scoreBox);
 
         // --- Centre: status flourish (promotions, shields, cracks…) ---
+        // Full-rect with centred alignment: anchoring the label itself to the
+        // centre broke when Flourish reset Position (notes drew from the
+        // screen's top-left corner), and long boss text needs to wrap.
         _note = UiTheme.MakeLabel("", UiTheme.ComboSize, UiTheme.Accent, HorizontalAlignment.Center);
-        _note.SetAnchorsPreset(LayoutPreset.Center);
-        _note.GrowHorizontal = GrowDirection.Both;
-        _note.GrowVertical = GrowDirection.Both;
+        _note.SetAnchorsPreset(LayoutPreset.FullRect);
+        _note.VerticalAlignment = VerticalAlignment.Center;
+        _note.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _note.MouseFilter = MouseFilterEnum.Ignore;
         _note.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.85f));
         _note.AddThemeConstantOverride("shadow_outline_size", 6);

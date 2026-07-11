@@ -152,9 +152,61 @@ public partial class UiFlowDriver : Node
             if (!await PressButton("NEXT BATTLE")) return;
             if (await ExpectButton("II") == null) return;
 
-            // Battle 2: pause → abandon → back to Title.
-            if (!await PressButton("II")) return;
-            if (!await PressButton("ABANDON RUN")) return;
+            // With screenshots on, push through to battle 4 (buying in every
+            // shop): stall in battle 3 until the ring cracks for that shot,
+            // then capture Lockmaker's locked tiles at battle 4's start —
+            // the two board states no other shot covers. Losing is tolerated.
+            if (_shotDir != null)
+            {
+                while (_session.CurrentRun.Battle < 4)
+                {
+                    if (_session.CurrentRun.Battle == 3)
+                    {
+                        _won = _lost = false;
+                        for (int a = 0; a < MaxActionsPerBattle && !_won && !_lost
+                            && _board.DebugCrackedCount == 0; a++)
+                        {
+                            if (BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, stall: true)
+                                == BotActionResult.NoAction) break;
+                            await Frames(1);
+                        }
+                        if (_board.DebugCrackedCount > 0) await Shot("11-cracked");
+                        else GD.Print("[UIFLOW] battle 3 ended before cracking");
+                        if (!_won && !_lost && !await FinishBattle()) return;
+                    }
+                    else if (!await PlayBattle()) return;
+
+                    if (_lost) break;
+                    if (await ExpectButton("NEXT BATTLE") == null) return;
+                    for (int b = 0; b < 2; b++)
+                    {
+                        var offer = FindButton("BUY", requireEnabled: true);
+                        if (offer == null) break;
+                        offer.EmitSignal(BaseButton.SignalName.Pressed);
+                        await Frames(2);
+                    }
+                    if (!await PressButton("NEXT BATTLE")) return;
+                    if (await ExpectButton("II") == null) return;
+                }
+                if (!_lost && _session.CurrentRun.Battle == 4)
+                {
+                    if (_board.DebugLockedCount > 0) await Shot("10-lockmaker");
+                    else GD.Print("[UIFLOW] battle 4 had no locked tiles");
+                }
+                if (_lost)
+                {
+                    GD.Print("[UIFLOW] lost before battle 4 — tolerated, heading to title");
+                    if (await ExpectButton("NEW RUN") == null) return;
+                    if (!await PressButton("TITLE")) return;
+                }
+            }
+
+            // Pause → abandon → back to Title (if still in a battle).
+            if (FindButton("II") != null)
+            {
+                if (!await PressButton("II")) return;
+                if (!await PressButton("ABANDON RUN")) return;
+            }
             if (await ExpectButton("PLAY") == null) return;
             GD.Print("[UIFLOW] abandon → title ok");
         }
@@ -202,6 +254,29 @@ public partial class UiFlowDriver : Node
         if (!await PressButton("‹")) return;   // NewRun back chevron
         if (await ExpectButton("PLAY") == null) return;
         GD.Print("[UIFLOW] game over → new run → back → title ok");
+    }
+
+    // Continue the current battle to completion WITHOUT resetting the outcome
+    // flags (used after a stall segment already advanced the battle).
+    private async Task<bool> FinishBattle()
+    {
+        for (int actions = 0; actions < MaxActionsPerBattle && !_won && !_lost; actions++)
+        {
+            var result = BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng);
+            if (result == BotActionResult.NoAction || result == BotActionResult.Inconsistent)
+            {
+                Fail($"battle continuation failed: {result}");
+                return false;
+            }
+            await Frames(1);
+        }
+        if (!_won && !_lost)
+        {
+            Fail($"battle did not finish within {MaxActionsPerBattle} actions");
+            return false;
+        }
+        await Frames(3);
+        return true;
     }
 
     private async Task<bool> PlayBattle(bool suicidal = false)
