@@ -14,10 +14,14 @@
 //   - project.godot [autoload]: Sfx="*res://scripts/Sfx.cs".
 // =============================================================================
 
-using System.Collections.Generic;
+using System;
 using Godot;
 
 namespace HexGame;
+
+// Compile-time-safe cue keys: a mistyped string used to no-op silently.
+// Each cue maps to res://audio/<lowercase-name>.wav.
+public enum SfxCue { Select, Move, Capture, Coin, Crack, Collapse, Win, Lose, Boss }
 
 public partial class Sfx : Node
 {
@@ -27,7 +31,7 @@ public partial class Sfx : Node
 
     private static Sfx _instance;
 
-    private readonly Dictionary<string, AudioStream> _streams = new();
+    private readonly AudioStream[] _streams = new AudioStream[CueCount];
     private readonly AudioStreamPlayer[] _pool = new AudioStreamPlayer[PoolSize];
     private AudioStreamPlayer _ambient;
     private AudioStreamPlayer _threat;
@@ -36,10 +40,7 @@ public partial class Sfx : Node
 
     public static bool Enabled { get; private set; } = true;
 
-    private static readonly string[] Names =
-    {
-        "select", "move", "capture", "coin", "crack", "collapse", "win", "lose", "boss",
-    };
+    private static readonly int CueCount = Enum.GetValues<SfxCue>().Length;
 
     public override void _Ready()
     {
@@ -49,11 +50,11 @@ public partial class Sfx : Node
             _pool[i] = new AudioStreamPlayer();
             AddChild(_pool[i]);
         }
-        foreach (var name in Names)
+        foreach (var cue in Enum.GetValues<SfxCue>())
         {
-            var path = $"res://audio/{name}.wav";
+            var path = $"res://audio/{cue.ToString().ToLowerInvariant()}.wav";
             if (ResourceLoader.Exists(path))
-                _streams[name] = GD.Load<AudioStream>(path);
+                _streams[(int)cue] = GD.Load<AudioStream>(path);
         }
 
         var cfg = new ConfigFile();
@@ -116,10 +117,12 @@ public partial class Sfx : Node
         if (_instance == this) _instance = null;
     }
 
-    public static void Play(string name, float volumeDb = 0f)
+    public static void Play(SfxCue cue, float volumeDb = 0f)
     {
         var inst = _instance;
-        if (inst == null || !Enabled || !inst._streams.TryGetValue(name, out var stream)) return;
+        if (inst == null || !Enabled) return;
+        var stream = inst._streams[(int)cue];
+        if (stream == null) return;
 
         var p = inst._pool[inst._next];
         inst._next = (inst._next + 1) % PoolSize;

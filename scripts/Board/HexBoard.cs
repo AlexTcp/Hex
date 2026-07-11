@@ -112,18 +112,9 @@ public partial class HexBoard : Node3D, IBattleQuery
     private HexCoord _hypoTo;                // danger prediction (IBattleQuery)
     private bool _hypoActive = false;
 
-    // ----- FX (pooled) ------------------------------------------------------
-    private Tween _pulseTween;
-    private Tween _dangerPulseTween;
-    private MeshInstance3D _ringNode;
-    private Tween _ringTween;
-    private MeshInstance3D _selectRingNode;
-    private CpuParticles3D _captureParticles;
-    private Label3D _moneyPop;
-    private Tween _moneyPopTween;
+    // ----- Markers / threat (FX node pools live in HexBoard.Fx.cs) ---------
     private readonly Dictionary<HexCoord, MeshInstance3D> _upgradeMarkers = new();
     private bool _threat = false;
-    private HexCoord? _shopPreviewCoord;     // tile a shop offer would claim
 
     private sealed class Tile
     {
@@ -261,7 +252,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         {
             EmitSignal(SignalName.StatusNote,
                 $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
-            Sfx.Play("boss", -4f);
+            Sfx.Play(SfxCue.Boss, -4f);
         }
         else
         {
@@ -442,16 +433,6 @@ public partial class HexBoard : Node3D, IBattleQuery
     private void EmitArmyCounts() =>
         EmitSignal(SignalName.ArmyChanged, CountSide(PieceSide.Player), _run?.Reserve.Count ?? 0);
 
-    // Base material by state: stunned enemies read snare-purple so the player
-    // can see which piece is skipping its turn (the selected glow still wins).
-    private void RefreshPieceVisual(BattlePiece p)
-    {
-        if (p == _selPiece || p.Node == null || !IsInstanceValid(p.Node)) return;
-        p.Node.MaterialOverride = p.Side == PieceSide.Enemy && p.StunTurns > 0
-            ? PieceVisuals.StunnedMaterial
-            : PieceVisuals.MaterialFor(p.Side);
-    }
-
     // ----- Input -------------------------------------------------------------
 
     private void OnTileInput(HexCoord coord, InputEvent e)
@@ -551,7 +532,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         piece.Node.MaterialOverride = PieceVisuals.SelectedMaterial;
         PositionSelectRing(piece.Coord);
         StartHighlightPulse();
-        Sfx.Play("select", -10f);
+        Sfx.Play(SfxCue.Select, -10f);
 
         var info = PieceCatalog.Info(piece.Kind);
         EmitSignal(SignalName.InspectChanged, $"{info.Name.ToUpperInvariant()} — {info.Description}");
@@ -578,7 +559,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
         var info = PieceCatalog.Info(enemy.Kind);
         EmitSignal(SignalName.InspectChanged, $"ENEMY {info.Name.ToUpperInvariant()} — {info.Description}");
-        Sfx.Play("select", -14f);
+        Sfx.Play(SfxCue.Select, -14f);
         Haptics.Tap(8);
     }
 
@@ -633,43 +614,6 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
         _hypoActive = false;
         return danger;
-    }
-
-    // Two looped tweens drive the highlight materials at zero per-tile cost:
-    // gold/copper breathe together; the danger red pulses at DOUBLE rate so the
-    // death-tile warning is a rhythm cue, not only a colour (colour-blind safe).
-    private void StartHighlightPulse()
-    {
-        _pulseTween?.Kill();
-        var t = CreateTween().SetLoops();
-        AddPulseLeg(t, 1.5f, 0.55f);
-        AddPulseLeg(t, 0.7f, 0.55f);
-        _pulseTween = t;
-
-        _dangerPulseTween?.Kill();
-        var d = CreateTween().SetLoops();
-        d.TweenProperty(DangerHighlightMaterialShared, "emission_energy_multiplier", 1.6f, 0.275f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-        d.TweenProperty(DangerHighlightMaterialShared, "emission_energy_multiplier", 0.6f, 0.275f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-        _dangerPulseTween = d;
-    }
-
-    private void AddPulseLeg(Tween t, float energy, float dur)
-    {
-        t.TweenProperty(HighlightMaterialShared, "emission_energy_multiplier", energy, dur)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-        t.Parallel().TweenProperty(CaptureHighlightMaterialShared, "emission_energy_multiplier", energy, dur)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-    }
-
-    private void StopHighlightPulse()
-    {
-        if (_pulseTween != null) { _pulseTween.Kill(); _pulseTween = null; }
-        if (_dangerPulseTween != null) { _dangerPulseTween.Kill(); _dangerPulseTween = null; }
-        HighlightMaterialShared.EmissionEnergyMultiplier = 1f;
-        CaptureHighlightMaterialShared.EmissionEnergyMultiplier = 1f;
-        DangerHighlightMaterialShared.EmissionEnergyMultiplier = 1f;
     }
 
     // ----- Deploy ------------------------------------------------------------
@@ -729,7 +673,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _run.Reserve.RemoveAt(idx);
         SpawnPiece(kind, PieceSide.Player, coord);
         PlayLandingRing(coord, false);
-        Sfx.Play("move", -7f);
+        Sfx.Play(SfxCue.Move, -7f);
         Haptics.Tap(15);
         PromoteStrandedPawns();
 
@@ -774,7 +718,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         var move = CreateTween();
         if (delay > 0f) move.TweenInterval(delay);
         // The thud rides the (possibly delayed) move animation, not the logic.
-        move.TweenCallback(Callable.From(() => Sfx.Play("move", -7f)));
+        move.TweenCallback(Callable.From(() => Sfx.Play(SfxCue.Move, -7f)));
         move.TweenProperty(piece.Node, "position", target, 0.18f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
 
@@ -1146,7 +1090,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             if (_active.Contains(_coordScratch[i])) _cracked.Add(_coordScratch[i]);
         RefreshAllTileVisuals();
         SetThreat(true);
-        Sfx.Play("crack", -5f);
+        Sfx.Play(SfxCue.Crack, -5f);
         EmitSignal(SignalName.StatusNote, "THE BOARD CRACKS");
     }
 
@@ -1164,7 +1108,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _outerRadius--;
         _stateStamp++;
         _cacheStamp = -1;
-        Sfx.Play("collapse", -3f);
+        Sfx.Play(SfxCue.Collapse, -3f);
         RefreshAllTileVisuals();
         SetThreat(false);
         EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
@@ -1221,7 +1165,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
 
         SetThreat(false);
-        Sfx.Play("win", -5f);
+        Sfx.Play(SfxCue.Win, -5f);
         EmitSignal(SignalName.BattleWon);
     }
 
@@ -1230,7 +1174,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _running = false;
         EndSelect();
         SetThreat(false);
-        Sfx.Play("lose", -4f);
+        Sfx.Play(SfxCue.Lose, -4f);
         EmitSignal(SignalName.BattleLost);
     }
 
@@ -1282,165 +1226,5 @@ public partial class HexBoard : Node3D, IBattleQuery
         EmitSignal(SignalName.ThreatChanged, threat);
     }
 
-    // ----- Tile visuals ---------------------------------------------------------
-
-    // Shop hook: gold-mark the tile a tile-upgrade offer would claim, over the
-    // frozen post-battle board, so the player sees exactly what they'd buy.
-    public void SetShopPreviewTile(HexCoord? coord)
-    {
-        var prev = _shopPreviewCoord;
-        _shopPreviewCoord = coord;
-        if (prev.HasValue) RefreshTileVisual(prev.Value);
-        if (coord.HasValue) RefreshTileVisual(coord.Value);
-    }
-
-    private void RefreshTileVisual(HexCoord coord)
-    {
-        if (!_tiles.TryGetValue(coord, out var tile)) return;
-        if (_highlighted.Contains(coord)) return;     // selection paint wins
-        if (_shopPreviewCoord == coord)
-        {
-            tile.Mesh.MaterialOverride = HighlightMaterialShared;
-            return;
-        }
-        if (!_active.Contains(coord)) tile.Mesh.MaterialOverride = InactiveMaterial;
-        else if (_locked.Contains(coord)) tile.Mesh.MaterialOverride = LockedMaterial;
-        else if (_cracked.Contains(coord)) tile.Mesh.MaterialOverride = CrackedMaterial;
-        else tile.Mesh.MaterialOverride = tile.BaseMaterial;
-    }
-
-    private void RefreshAllTileVisuals()
-    {
-        foreach (var kv in _tiles) RefreshTileVisual(kv.Key);
-    }
-
-    // ----- FX (pooled nodes, re-triggered) ---------------------------------------
-
-    private void PlayLandingRing(HexCoord coord, bool capture)
-    {
-        if (_ringNode == null)
-        {
-            _ringNode = new MeshInstance3D
-            {
-                Mesh = SharedRingMesh,
-                MaterialOverride = RingMaterialShared,
-                Visible = false,
-            };
-            AddChild(_ringNode);
-        }
-
-        _ringTween?.Kill();
-        _ringNode.Position = HexLayout.ToWorld(coord, 0.1f);
-        _ringNode.Scale = new Vector3(0.35f, 1f, 0.35f);
-        _ringNode.Visible = true;
-        var ringColor = capture
-            ? new Color(CopperColor.R, CopperColor.G, CopperColor.B, 0.85f)
-            : RingGold;
-        RingMaterialShared.AlbedoColor = ringColor;
-
-        _ringTween = CreateTween();
-        _ringTween.TweenProperty(_ringNode, "scale", new Vector3(1.5f, 1f, 1.5f), 0.28f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
-        _ringTween.Parallel().TweenProperty(RingMaterialShared, "albedo_color",
-                new Color(ringColor.R, ringColor.G, ringColor.B, 0f), 0.28f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
-        _ringTween.TweenCallback(Callable.From(() =>
-        {
-            if (IsInstanceValid(_ringNode)) _ringNode.Visible = false;
-        }));
-    }
-
-    private void PositionSelectRing(HexCoord coord)
-    {
-        if (_selectRingNode == null)
-        {
-            _selectRingNode = new MeshInstance3D
-            {
-                Mesh = SharedSelectRingMesh,
-                MaterialOverride = SelectRingMaterialShared,
-            };
-            AddChild(_selectRingNode);
-        }
-        _selectRingNode.Position = HexLayout.ToWorld(coord, RingY);
-        _selectRingNode.Visible = true;
-    }
-
-    private void HideSelectRing()
-    {
-        if (_selectRingNode != null && IsInstanceValid(_selectRingNode))
-            _selectRingNode.Visible = false;
-    }
-
-    // Floating "+$N" over the hex that earned it — payouts vary (piece value,
-    // Gold tiles, gambits, boss bonuses) and the corner chip alone hides that.
-    private void ShowMoneyPop(HexCoord coord, int amount)
-    {
-        if (amount <= 0) return;
-        if (_moneyPop == null)
-        {
-            _moneyPop = new Label3D
-            {
-                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
-                FontSize = 96,
-                PixelSize = 0.005f,
-                OutlineSize = 24,
-                OutlineModulate = new Color(0, 0, 0, 0.85f),
-                NoDepthTest = true,
-                Visible = false,
-            };
-            AddChild(_moneyPop);
-        }
-        _moneyPopTween?.Kill();
-        Sfx.Play("coin", -9f);
-        _moneyPop.Text = $"+${amount}";
-        _moneyPop.Position = HexLayout.ToWorld(coord, 0.6f);
-        _moneyPop.Modulate = new Color(GoldColor.R, GoldColor.G, GoldColor.B, 1f);
-        _moneyPop.Visible = true;
-
-        _moneyPopTween = CreateTween();
-        _moneyPopTween.TweenProperty(_moneyPop, "position:y", 1.4f, 0.7f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
-        _moneyPopTween.Parallel().TweenProperty(_moneyPop, "modulate:a", 0f, 0.7f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
-        _moneyPopTween.TweenCallback(Callable.From(() =>
-        {
-            if (IsInstanceValid(_moneyPop)) _moneyPop.Visible = false;
-        }));
-    }
-
-    private void PlayCaptureBurst(HexCoord coord, float delay = 0f)
-    {
-        if (delay > 0f)
-        {
-            var t = CreateTween();
-            t.TweenInterval(delay);
-            t.TweenCallback(Callable.From(() => PlayCaptureBurst(coord)));
-            return;
-        }
-        Sfx.Play("capture", -5f);
-        if (_captureParticles == null)
-        {
-            _captureParticles = new CpuParticles3D
-            {
-                Mesh = SharedSparkMesh,
-                MaterialOverride = SparkMaterialShared,
-                Emitting = false,
-                OneShot = true,
-                Amount = 14,
-                Lifetime = 0.5,
-                Explosiveness = 1.0f,
-                Direction = Vector3.Up,
-                Spread = 35f,
-                InitialVelocityMin = 1.2f,
-                InitialVelocityMax = 2.4f,
-                Gravity = new Vector3(0, -3f, 0),
-                ScaleAmountMin = 0.6f,
-                ScaleAmountMax = 1.0f,
-            };
-            AddChild(_captureParticles);
-        }
-        _captureParticles.Position = HexLayout.ToWorld(coord, PieceY);
-        _captureParticles.Restart();
-        _captureParticles.Emitting = true;
-    }
+    // Tile visuals and pooled FX live in HexBoard.Fx.cs.
 }

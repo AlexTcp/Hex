@@ -182,7 +182,7 @@ public partial class UiFlowDriver : Node
                         for (int a = 0; a < MaxActionsPerBattle && !_won && !_lost
                             && _board.DebugCrackedCount == 0; a++)
                         {
-                            if (BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, stall: true)
+                            if (BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, BotMode.Stall)
                                 == BotActionResult.NoAction) break;
                             await Frames(1);
                         }
@@ -240,7 +240,7 @@ public partial class UiFlowDriver : Node
         if (!await PressButton("PLAY")) return;
         if (!await PressButton("BEGIN RUN")) return;
         if (await ExpectButton("II") == null) return;
-        if (!await PlayBattle(suicidal: true)) return;
+        if (!await PlayBattle(BotMode.Suicidal)) return;
         if (_won)
         {
             GD.Print("[UIFLOW] suicidal bot somehow won — skipping game-over check");
@@ -295,14 +295,14 @@ public partial class UiFlowDriver : Node
         return true;
     }
 
-    private async Task<bool> PlayBattle(bool suicidal = false)
+    private async Task<bool> PlayBattle(BotMode mode = BotMode.Normal)
     {
         _won = _lost = false;
         bool popShot = false;
         for (int actions = 0; actions < MaxActionsPerBattle && !_won && !_lost; actions++)
         {
             int moneyBefore = _session.CurrentRun.Money;
-            var result = BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, suicidal);
+            var result = BotBrain.TakeOneAction(_board, _session.CurrentRun, _rng, mode);
             // Catch the first capture's floating +$N while it's still rising.
             if (_shotDir != null && !popShot && !_won && !_lost
                 && _session.CurrentRun.Money > moneyBefore)

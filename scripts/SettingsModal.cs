@@ -16,7 +16,8 @@
 #nullable enable
 using Godot;
 using System;
-using HexGame;
+
+namespace HexGame;
 
 public partial class SettingsModal : Control
 {
@@ -97,7 +98,7 @@ public partial class SettingsModal : Control
         {
             Sfx.SetEnabled(!Sfx.Enabled);
             soundBtn.Text = SoundLabel();
-            Sfx.Play("select", -12f);   // audible confirmation when turning ON
+            Sfx.Play(SfxCue.Select, -12f);   // audible confirmation when turning ON
         };
         content.AddChild(soundBtn);
 

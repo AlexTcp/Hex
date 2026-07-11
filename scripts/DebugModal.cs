@@ -16,6 +16,8 @@
 #nullable enable
 using Godot;
 
+namespace HexGame;
+
 public partial class DebugModal : Control
 {
     public static DebugModal? Instance { get; private set; }

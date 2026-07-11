@@ -164,7 +164,7 @@ public partial class ScreenManager : Node
     private void OnMoneyChanged(int money) => _hud.SetMoney(money);
     private void OnScoreChanged(int score) => _hud.SetScore(score);
     private void OnEnemiesChanged(int n) => _hud.SetEnemies(n);
-    private void OnArmyChanged(int onBoard, int reserve) => _hud.SetArmy(onBoard, reserve);
+    private void OnArmyChanged(int onBoard, int reserve) => _hud.RefreshReserve();
     private void OnCrumbleChanged(int turnsLeft, bool cracking) => _hud.SetCrumble(turnsLeft, cracking);
     private void OnStatusNote(string note) => _hud.ShowNote(note);
     private void OnInspectChanged(string text) => _hud.SetInspect(text);

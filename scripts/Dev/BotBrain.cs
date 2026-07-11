@@ -27,16 +27,20 @@ public enum BotActionResult
     Inconsistent,   // a legal move was not highlighted after selecting (a bug)
 }
 
+public enum BotMode
+{
+    Normal,     // play to win: safe captures > captures > safe approach
+    Suicidal,   // court danger, refuse captures — reach defeat deterministically
+    Stall,      // safe, capture-averse keep-away — let the crumble arrive on camera
+}
+
 public static class BotBrain
 {
     private static readonly List<HexCoord> Moves = new(64);
     private static readonly List<BattlePiece> Mine = new(16);
 
-    // suicidal: invert the goal — court danger, refuse captures — so a flow
-    // test can reach the defeat path deterministically. stall: play safe,
-    // capture-averse, keep-away moves so the crumble can arrive on camera.
     public static BotActionResult TakeOneAction(HexBoard board, RunState run, Random rng,
-        bool suicidal = false, bool stall = false)
+        BotMode mode = BotMode.Normal)
     {
         Mine.Clear();
         foreach (var p in board.DebugPieces)
@@ -45,7 +49,7 @@ public static class BotBrain
 
         // Reinforce eagerly when the board presence is thin; otherwise trickle
         // the reserve in occasionally.
-        if (!suicidal && !stall && run.Reserve.Count > 0
+        if (mode == BotMode.Normal && run.Reserve.Count > 0
             && (Mine.Count < 4 || rng.Next(6) == 0)
             && TryDeploy(board, run, rng))
             return BotActionResult.Deployed;
@@ -65,10 +69,10 @@ public static class BotBrain
                 bool capture = board.OccupantSide(dest) == PieceSide.Enemy;
                 bool safe = !board.DebugIsDeathTile(p, dest);
                 int rank;
-                if (stall)
+                if (mode == BotMode.Stall)
                     rank = (safe ? 3000 : 0) + (capture ? -2000 : 0)
                         + DistanceToNearestEnemy(board, dest) * 10;
-                else if (suicidal)
+                else if (mode == BotMode.Suicidal)
                     rank = (capture ? 0 : 1000) + (safe ? 0 : 2000)
                         - DistanceToNearestEnemy(board, dest) * 10;
                 else if (capture)

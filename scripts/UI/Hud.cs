@@ -12,8 +12,8 @@
 //
 // Interactions:
 //   - ScreenManager: constructs it with the pause + deploy callbacks; calls
-//     SetBattle/SetEnemies/SetScore/SetMoney/SetCrumble/SetArmy/ShowNote/
-//     SetDeployArmed.
+//     SetBattle/SetEnemies/SetScore/SetMoney/SetCrumble/RefreshReserve/
+//     ShowNote/SetDeployArmed.
 //   - RunState: bound via BindRun so the reserve bar can list piece names.
 // =============================================================================
 
@@ -119,7 +119,7 @@ public partial class Hud : Control
         pause.OffsetTop = 8; pause.OffsetBottom = 72;
         pause.Pressed += () =>
         {
-            Sfx.Play("select", -12f);
+            Sfx.Play(SfxCue.Select, -12f);
             _onPause?.Invoke();
         };
         AddChild(pause);
@@ -223,10 +223,9 @@ public partial class Hud : Control
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
     }
 
-    public void SetArmy(int onBoard, int reserve)
-    {
-        RebuildReserveBar();
-    }
+    // The reserve bar reads straight from the bound RunState; the army-count
+    // signal is just the refresh trigger.
+    public void RefreshReserve() => RebuildReserveBar();
 
     // Board confirmed/cancelled deploy mode: clear the armed button state.
     public void SetDeployArmed(bool active)
@@ -267,7 +266,7 @@ public partial class Hud : Control
             b.CustomMinimumSize = new Vector2(0, 60);
             b.Pressed += () =>
             {
-                Sfx.Play("select", -12f);
+                Sfx.Play(SfxCue.Select, -12f);
                 if (_armedIndex == idx)
                 {
                     _armedIndex = -1;

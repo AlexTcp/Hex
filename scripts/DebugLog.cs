@@ -23,6 +23,8 @@ using Godot;
 using System;
 using System.Collections.Generic;
 
+namespace HexGame;
+
 public partial class DebugLog : Node
 {
     public static DebugLog? Instance { get; private set; }

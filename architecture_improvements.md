@@ -31,3 +31,22 @@ headless boot. Reference bot win rate ~20–30% (statistical, not exact).
       fixed during bring-up (target pawn accidentally on the rook's file). 0 failures.
 - [x] **Verified** — build clean; 937/937 unit checks; 80 autoplay runs 0 failures (27
       wins); UI-flow PASS; headless boot clean.
+
+## Round 2
+
+- [x] **Split HexBoard's FX/visual plumbing into a partial** — `Board/HexBoard.Fx.cs` now
+      holds the pooled FX nodes, highlight-pulse tweens, tile/piece material refreshers and
+      the shop preview hook (verbatim move). Main file ~940 lines, resolution-focused.
+      (A bulk PowerShell find/replace corrupted em-dashes in five files mid-round —
+      reverted those files to HEAD and replayed every change through the Edit tool.)
+- [x] **Namespace the debug overlay** — DebugLog/DebugModal/SettingsModal moved into
+      `namespace HexGame`; autoload bindings unaffected.
+- [x] **BotBrain mode enum** — `BotMode { Normal, Suicidal, Stall }` replaces the two
+      mutually-exclusive bools; UiFlowDriver call sites converted.
+- [x] **Typo-proof audio cues** — `SfxCue` enum (array-indexed streams, name-derived wav
+      paths); all 15 call sites converted; a mistyped cue is now a compile error instead of
+      a silent no-op.
+- [x] **Honest Hud API** — `SetArmy(onBoard, reserve)` (which ignored both args) is now
+      `RefreshReserve()`; ScreenManager's signal handler updated; class-header doc synced.
+- [x] **Verified** — build clean; 937/937 unit checks; 80 autoplay runs 0 failures (24
+      wins); UI-flow PASS; no mojibake anywhere in scripts/.
