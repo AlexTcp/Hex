@@ -119,7 +119,6 @@ public partial class HexBoard : Node3D, IBattleQuery
     private sealed class Tile
     {
         public HexCoord Coord;
-        public int CheckerIndex;
         public MeshInstance3D Mesh;
         public StandardMaterial3D BaseMaterial;
         public Area3D Area;
@@ -151,7 +150,7 @@ public partial class HexBoard : Node3D, IBattleQuery
     private Tile BuildTile(HexCoord coord)
     {
         var checker = ((coord.Q - coord.R) % 3 + 3) % 3;
-        var tile = new Tile { Coord = coord, CheckerIndex = checker };
+        var tile = new Tile { Coord = coord };
 
         tile.BaseMaterial = TileMaterialsByChecker[checker];
 

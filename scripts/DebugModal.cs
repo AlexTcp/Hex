@@ -20,8 +20,6 @@ namespace HexGame;
 
 public partial class DebugModal : Control
 {
-    public static DebugModal? Instance { get; private set; }
-
     private ColorRect? _dim;
     private RichTextLabel? _logView;
     private Button? _copyButton;
@@ -30,17 +28,11 @@ public partial class DebugModal : Control
 
     public override void _Ready()
     {
-        Instance = this;
         AnchorRight = 1.0f;
         AnchorBottom = 1.0f;
         MouseFilter = MouseFilterEnum.Ignore;
         Visible = false;
         Build();
-    }
-
-    public override void _ExitTree()
-    {
-        if (Instance == this) Instance = null;
     }
 
     private void Build()

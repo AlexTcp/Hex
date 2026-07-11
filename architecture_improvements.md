@@ -67,3 +67,14 @@ headless boot. Reference bot win rate ~20–30% (statistical, not exact).
       HexBoard partial layout, TileVisuals row.
 - [x] **Verified** — build clean; 941/941 unit checks; UI-flow PASS with save hash
       preserved sans wrapper; 80 autoplay runs 0 failures (25 wins).
+
+## Round 4
+
+- [x] **Prune dead code (grep-verified zero readers)** — removed `Tile.CheckerIndex`, the
+      `HexCoord.Ring(int)` IEnumerable overload, `UiTheme.Heading`/`Body` factories, and
+      `DebugModal.Instance` (with its now-empty `_ExitTree`).
+- [x] **Extract CameraDirector from ScreenManager** — `UI/CameraDirector.cs` plain class
+      (Drift/StopDrift/Restore/Shake/Cleanup, tweens bound to the camera node); the
+      state machine delegates. ScreenManager loses ~55 lines and one responsibility.
+- [x] **Verified** — build clean; 941/941 unit checks; 80 autoplay runs 0 failures;
+      UI-flow PASS; boot clean; no mojibake.

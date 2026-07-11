@@ -159,12 +159,6 @@ public static class UiTheme
         return l;
     }
 
-    public static Label Heading(string text) =>
-        MakeLabel(text, HeadingSize, Text, HorizontalAlignment.Center);
-
-    public static Label Body(string text) =>
-        MakeLabel(text, BodySize, Text, HorizontalAlignment.Center);
-
     public static Label Muted(string text, int size) =>
         MakeLabel(text, size, TextMuted, HorizontalAlignment.Center);
 

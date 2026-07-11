@@ -53,9 +53,7 @@ public partial class ScreenManager : Node
     private TutorialOverlay _tutorial;
     private Control _currentScreen;
 
-    private Transform3D _camRest;
-    private Tween _driftTween;
-    private Tween _shakeTween;
+    private CameraDirector _cameraDirector;
     private readonly System.Collections.Generic.List<Tween> _transitionTweens = new();
     private Control[] _allScreens;
     private Tween _tutorialTween;
@@ -70,7 +68,7 @@ public partial class ScreenManager : Node
 
     public override void _Ready()
     {
-        _camRest = _camera.Transform;
+        _cameraDirector = new CameraDirector(_camera);
         _root.Theme = UiTheme.Build();
 
         BuildOverlays();
@@ -85,8 +83,7 @@ public partial class ScreenManager : Node
     {
         DebugLog.GameplayActiveChanged -= OnDebugModalToggled;
         _dangerTween?.Kill();
-        _driftTween?.Kill();
-        _shakeTween?.Kill();
+        _cameraDirector?.Cleanup();
         _tutorialTween?.Kill();
         foreach (var t in _transitionTweens) t?.Kill();
         _transitionTweens.Clear();
@@ -191,7 +188,7 @@ public partial class ScreenManager : Node
         }
 
         _shop.Present(run);
-        StartDrift();
+        _cameraDirector.Drift();
         GoState(AppState.Shop, _shop, 0.55f, 0.4f);
     }
 
@@ -201,7 +198,7 @@ public partial class ScreenManager : Node
         var run = _session.CurrentRun;
         bool newBest = _session.CommitRun();
         _gameOver.Present(victory: false, battle: run.Battle, score: run.Score, newBest: newBest, run: run);
-        Shake();
+        _cameraDirector.Shake();
         GoState(AppState.GameOver, _gameOver, 0.6f, 0.3f);
     }
 
@@ -213,7 +210,7 @@ public partial class ScreenManager : Node
     {
         _board.ShowPreview();
         _title.Refresh();
-        StartDrift();
+        _cameraDirector.Drift();
         GoState(AppState.Title, _title, 0.55f);
     }
 
@@ -222,7 +219,7 @@ public partial class ScreenManager : Node
         var run = _session.StartNewRun();
         _newRun.Present(run);
         _board.ShowPreview();
-        StartDrift();
+        _cameraDirector.Drift();
         GoState(AppState.NewRun, _newRun, 0.45f);
     }
 
@@ -236,8 +233,8 @@ public partial class ScreenManager : Node
     private void NextBattle()
     {
         var run = _session.CurrentRun;
-        StopDrift();
-        RestoreCamera();
+        _cameraDirector.StopDrift();
+        _cameraDirector.Restore();
         _hud.BindRun(run);
         _hud.SetBattle(run.Battle, BattlePlanner.BossFor(run.Battle));
         _board.StartBattle(run);
@@ -362,48 +359,6 @@ public partial class ScreenManager : Node
             _dangerTween = CreateTween();
             _dangerTween.TweenProperty(_dangerVignette, "modulate:a", 0f, 0.25f).SetTrans(Tween.TransitionType.Sine);
         }
-    }
-
-    // ----- Camera attract drift + defeat shake ----------------------------
-
-    private void StartDrift()
-    {
-        _driftTween?.Kill();
-        var origin = _camRest.Origin;
-        _driftTween = CreateTween().SetLoops();
-        _driftTween.TweenProperty(_camera, "position", origin + new Vector3(0.35f, 0f, 0.2f), 7.0f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-        _driftTween.TweenProperty(_camera, "position", origin + new Vector3(-0.35f, 0f, -0.1f), 7.0f)
-            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
-    }
-
-    private void StopDrift()
-    {
-        _driftTween?.Kill();
-        _driftTween = null;
-    }
-
-    private void RestoreCamera()
-    {
-        _shakeTween?.Kill();
-        _camera.Transform = _camRest;
-    }
-
-    // Restrained defeat shake: a short decaying positional jitter, then snap
-    // back to the cached rest transform.
-    private void Shake()
-    {
-        _shakeTween?.Kill();
-        var o = _camRest.Origin;
-        _shakeTween = CreateTween();
-        Vector3[] offs =
-        {
-            new(0.08f, -0.05f, 0f), new(-0.06f, 0.04f, 0f),
-            new(0.04f, 0.03f, 0f), new(-0.02f, -0.02f, 0f),
-        };
-        foreach (var off in offs)
-            _shakeTween.TweenProperty(_camera, "position", o + off, 0.06f).SetTrans(Tween.TransitionType.Sine);
-        _shakeTween.TweenProperty(_camera, "position", o, 0.06f).SetTrans(Tween.TransitionType.Sine);
     }
 
     // ----- Helpers -------------------------------------------------------

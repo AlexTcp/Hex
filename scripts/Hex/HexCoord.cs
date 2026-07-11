@@ -95,17 +95,4 @@ public readonly struct HexCoord : IEquatable<HexCoord>
         }
     }
 
-    public static IEnumerable<HexCoord> Ring(int radius)
-    {
-        if (radius == 0) { yield return Zero; yield break; }
-        var hex = Directions[4] * radius;
-        for (int side = 0; side < 6; side++)
-        {
-            for (int step = 0; step < radius; step++)
-            {
-                yield return hex;
-                hex += Directions[side];
-            }
-        }
-    }
 }
