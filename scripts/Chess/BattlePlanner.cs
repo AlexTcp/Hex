@@ -75,8 +75,11 @@ public static class BattlePlanner
     // Spend a point budget on black pieces. Stronger kinds unlock as the run
     // progresses; the roster is capped so the small active area stays legible.
     private const int MaxEnemies = 8;
+    private const int HordeCap = 10;
 
-    public static void FillEnemyArmy(int battle, Random rng, List<PieceKind> output)
+    // Returns a theme name to announce ("PAWN HORDE"…), or null for the
+    // standard mixed roster.
+    public static string FillEnemyArmy(int battle, Random rng, List<PieceKind> output)
     {
         output.Clear();
         int budget = 3 + battle * 2 + (RunState.IsBossBattle(battle) ? 3 : 0);
@@ -89,6 +92,38 @@ public static class BattlePlanner
             budget -= Cost(PieceKind.Queen);
         }
 
+        // Occasional themed rosters keep mid-run battles from blurring
+        // together. Never on bosses or the finale; only once knights/bishops
+        // have unlocked (battle 3+).
+        if (!RunState.IsBossBattle(battle) && battle >= 3 && battle < RunState.FinalBattle
+            && rng.Next(100) < 25)
+        {
+            switch (rng.Next(3))
+            {
+                case 0:
+                    while (budget >= Cost(PieceKind.Pawn) && output.Count < HordeCap)
+                    {
+                        output.Add(PieceKind.Pawn);
+                        budget -= Cost(PieceKind.Pawn);
+                    }
+                    return "PAWN HORDE";
+                case 1:
+                    while (budget >= Cost(PieceKind.Knight) && output.Count < MaxEnemies)
+                    {
+                        output.Add(PieceKind.Knight);
+                        budget -= Cost(PieceKind.Knight);
+                    }
+                    return "CAVALRY";
+                default:
+                    while (budget >= Cost(PieceKind.Bishop) && output.Count < MaxEnemies)
+                    {
+                        output.Add(PieceKind.Bishop);
+                        budget -= Cost(PieceKind.Bishop);
+                    }
+                    return "BISHOP COURT";
+            }
+        }
+
         while (budget >= 2 && output.Count < MaxEnemies)
         {
             var pick = PickAffordable(battle, budget, rng);
@@ -96,6 +131,7 @@ public static class BattlePlanner
             budget -= Cost(pick);
         }
         if (output.Count == 0) output.Add(PieceKind.Pawn);
+        return null;
     }
 
     private static int Cost(PieceKind kind) => kind switch

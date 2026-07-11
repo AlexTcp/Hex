@@ -368,7 +368,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _crumbleTimer = BattlePlanner.CrumbleTurns(battle, run, _boss);
 
         SpawnPlayerArmy();
-        SpawnEnemyArmy(battle);
+        string theme = SpawnEnemyArmy(battle);
         if (_boss == BossModifier.Lockmaker) ApplyLockmaker();
         PlaceUpgradeMarkers();
         RefreshAllTileVisuals();
@@ -390,7 +390,8 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
         else
         {
-            EmitSignal(SignalName.StatusNote, $"BATTLE {battle}");
+            EmitSignal(SignalName.StatusNote,
+                theme != null ? $"BATTLE {battle}: {theme}" : $"BATTLE {battle}");
         }
 
         // The finale's guaranteed Queen gets her own announcement (last note wins
@@ -458,9 +459,9 @@ public partial class HexBoard : Node3D, IBattleQuery
         }
     }
 
-    private void SpawnEnemyArmy(int battle)
+    private string SpawnEnemyArmy(int battle)
     {
-        BattlePlanner.FillEnemyArmy(battle, _rng, _enemyPlan);
+        string theme = BattlePlanner.FillEnemyArmy(battle, _rng, _enemyPlan);
         _coordScratch.Clear();
         foreach (var c in _active) _coordScratch.Add(c);
         _coordScratch.Sort((a, b) => a.R != b.R ? a.R.CompareTo(b.R) : System.Math.Abs(a.Q).CompareTo(System.Math.Abs(b.Q)));
@@ -474,6 +475,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             SpawnPiece(_enemyPlan[placed], PieceSide.Enemy, c);
             placed++;
         }
+        return theme;
     }
 
     private void ApplyLockmaker()

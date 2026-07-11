@@ -277,3 +277,11 @@ out of commits.)
       shows "Battle N of 12 awaits." for normal battles (muted) instead of staying blank.
       (icon.svg checked — already custom and on-brand, no work needed.)
 - [x] **Verified** — build clean; 60 autoplay runs 0 failures (14 wins); UI-flow PASS.
+
+## Round 22
+
+- [x] **Themed enemy battles** — ~25% of non-boss battles from battle 3 field PAWN HORDE
+      (all pawns, cap 10), CAVALRY (all knights) or BISHOP COURT (all bishops), announced
+      in the battle-start flourish ("BATTLE 5: CAVALRY"). Never on bosses or the finale.
+- [x] **Measured** — 200 runs, 0 failures, 28% win rate; per-battle clear rates within
+      variance of the reference curve (finale 60%). UI-flow PASS.
