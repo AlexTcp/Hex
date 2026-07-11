@@ -205,3 +205,21 @@ out of commits.)
       (~490–580 nodes over 200 runs, orphans always 0) — **no real leak** in battle
       setup/teardown, money pops, tweens, or audio players.
 - [x] **Verified** — 200 runs, 0 failures; difficulty curve steady (finale 63–65%).
+
+## Round 16
+
+- [x] **Screenshot mode for the UI-flow driver** — `screenshots=<dir>` user arg captures
+      viewport PNGs at 7 key screens during a windowed run
+      (`godot --path . res://dev/uiflow.tscn -- screenshots=<dir>`, NOT headless).
+      Reviewing the renders found and fixed three real issues:
+- [x] **Inspection chip clipped off-screen** — fixed height + downward growth truncated
+      long piece descriptions below the viewport. Now bottom-anchored with
+      `GrowVertical=Begin` (grows upward); re-shot to confirm.
+- [x] **Pieces too small to read** — the hexagonal rook was mistakable for a loose tile
+      from the play camera. All six piece meshes scaled up ~25–30% (screenshot-checked).
+- [x] **Shop preview tile hidden behind the offer cards** — the claimed hex projects to
+      screen centre, exactly where the cards sit. The tile card now embeds a mini hex-map
+      diagram (radius-2 schematic, claimed hex gold) so the location is always visible;
+      board glow kept for after purchase.
+- [x] **Verified** — build clean; windowed UI-flow PASS with 7 shots reviewed; 80 autoplay
+      runs 0 failures (25 wins); game-over stat rows render correctly.

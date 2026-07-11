@@ -70,12 +70,14 @@ public static class PieceVisuals
 
     // One shared mesh per kind. Distinct silhouettes at a glance from the
     // tilted camera: squat sphere pawn, tall tapered queen, hexagonal rook, etc.
-    private static readonly Mesh PawnMesh = new SphereMesh { Radius = 0.15f, Height = 0.30f };
-    private static readonly Mesh KingMesh = new CylinderMesh { TopRadius = 0.24f, BottomRadius = 0.17f, Height = 0.58f };
-    private static readonly Mesh RookMesh = new CylinderMesh { TopRadius = 0.20f, BottomRadius = 0.20f, Height = 0.44f, RadialSegments = 6 };
-    private static readonly Mesh BishopMesh = new CylinderMesh { TopRadius = 0.04f, BottomRadius = 0.21f, Height = 0.56f };
-    private static readonly Mesh KnightMesh = new PrismMesh { Size = new Vector3(0.34f, 0.46f, 0.30f) };
-    private static readonly Mesh QueenMesh = new CylinderMesh { TopRadius = 0.09f, BottomRadius = 0.25f, Height = 0.72f };
+    // Sized so pieces read clearly from the play camera (screenshot-checked:
+    // at the old ~0.15–0.25 radii the rook was mistakable for a loose tile).
+    private static readonly Mesh PawnMesh = new SphereMesh { Radius = 0.20f, Height = 0.40f };
+    private static readonly Mesh KingMesh = new CylinderMesh { TopRadius = 0.30f, BottomRadius = 0.22f, Height = 0.72f };
+    private static readonly Mesh RookMesh = new CylinderMesh { TopRadius = 0.25f, BottomRadius = 0.25f, Height = 0.56f, RadialSegments = 6 };
+    private static readonly Mesh BishopMesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.26f, Height = 0.70f };
+    private static readonly Mesh KnightMesh = new PrismMesh { Size = new Vector3(0.42f, 0.58f, 0.38f) };
+    private static readonly Mesh QueenMesh = new CylinderMesh { TopRadius = 0.11f, BottomRadius = 0.31f, Height = 0.90f };
 
     public static Mesh MeshFor(PieceKind kind) => kind switch
     {

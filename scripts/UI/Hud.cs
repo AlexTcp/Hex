@@ -122,11 +122,14 @@ public partial class Hud : Control
         AddChild(pause);
 
         // --- Bottom-left: inspection chip (selected piece / enemy reach / tile) ---
+        // Anchored to the bottom edge and grows UPWARD — the text length varies
+        // per piece and a fixed-height panel clips off-screen.
         _inspectChip = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore };
         _inspectChip.AddThemeStyleboxOverride("panel",
             UiTheme.Box(UiTheme.PanelRaised, 10, 1, UiTheme.PanelBorder, 16, 10));
         _inspectChip.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        _inspectChip.OffsetLeft = 24; _inspectChip.OffsetTop = -150; _inspectChip.OffsetBottom = -24;
+        _inspectChip.GrowVertical = GrowDirection.Begin;
+        _inspectChip.OffsetLeft = 24; _inspectChip.OffsetTop = -24; _inspectChip.OffsetBottom = -24;
         _inspectChip.Visible = false;
         _inspectLabel = UiTheme.MakeLabel("", UiTheme.BodySmallSize, UiTheme.Text);
         _inspectLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;

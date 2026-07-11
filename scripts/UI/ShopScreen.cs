@@ -190,8 +190,45 @@ public partial class ShopScreen : Control
         if (coord.HasValue)
         {
             var c = coord.Value;
-            AddOffer("TILE", up.Name, $"{up.Description}\nClaims the tile lit gold on the board.", up.Price,
-                () => _run.TileUpgrades[c] = up.Kind);
+            AddOffer("TILE", up.Name, up.Description, up.Price,
+                () => _run.TileUpgrades[c] = up.Kind,
+                extra: new HexMapDiagram(c));
+        }
+    }
+
+    // Tiny schematic of the central board with the claimed hex lit gold — the
+    // 3D board sits behind the offer cards, so the in-card map is the only
+    // reliably visible statement of WHICH tile the offer claims.
+    private sealed partial class HexMapDiagram : Control
+    {
+        private const int MapRadius = 2;
+        private const float HexSize = 12f;
+        private readonly HexCoord _claimed;
+
+        public HexMapDiagram(HexCoord claimed)
+        {
+            _claimed = claimed;
+            CustomMinimumSize = new Vector2(150, 116);
+            MouseFilter = MouseFilterEnum.Ignore;
+        }
+
+        public override void _Draw()
+        {
+            var center = Size / 2f;
+            var points = new Vector2[6];
+            foreach (var h in HexCoord.Within(MapRadius))
+            {
+                // Flat-top axial-to-pixel, matching HexLayout's orientation.
+                var pos = center + new Vector2(1.5f * HexSize * h.Q,
+                    Mathf.Sqrt(3f) * HexSize * (h.R + h.Q * 0.5f));
+                for (int i = 0; i < 6; i++)
+                {
+                    float a = Mathf.Pi / 3f * i;
+                    points[i] = pos + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * (HexSize - 1.2f);
+                }
+                bool claimed = h == _claimed;
+                DrawColoredPolygon(points, claimed ? UiTheme.Accent : UiTheme.PanelBorder);
+            }
         }
     }
 
@@ -234,7 +271,8 @@ public partial class ShopScreen : Control
         return candidates[_rng.Next(candidates.Count)];
     }
 
-    private void AddOffer(string tag, string name, string desc, int price, Action apply)
+    private void AddOffer(string tag, string name, string desc, int price, Action apply,
+        Control extra = null)
     {
         var card = new PanelContainer();
         card.CustomMinimumSize = new Vector2(250, 300);
@@ -253,6 +291,8 @@ public partial class ShopScreen : Control
         d.CustomMinimumSize = new Vector2(210, 0);
         d.SizeFlagsVertical = SizeFlags.ExpandFill;
         v.AddChild(d);
+
+        if (extra != null) v.AddChild(extra);
 
         var buy = UiTheme.PrimaryButton($"BUY  ${price}");
         buy.CustomMinimumSize = new Vector2(0, 64);

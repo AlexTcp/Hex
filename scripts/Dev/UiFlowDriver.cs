@@ -37,6 +37,7 @@ public partial class UiFlowDriver : Node
     private readonly Random _rng = new();
     private bool _won, _lost;
     private int _fails;
+    private string _shotDir;   // screenshots=<dir> user arg; requires a windowed run
 
     public override void _Ready() => _ = Run();
 
@@ -58,6 +59,10 @@ public partial class UiFlowDriver : Node
 
     private async Task RunFlow()
     {
+        foreach (var arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("screenshots="))
+                _shotDir = arg.Substring("screenshots=".Length).TrimEnd('/', '\\');
+
         var packed = GD.Load<PackedScene>("res://scenes/game.tscn");
         AddChild(packed.Instantiate());
         await Frames(3);
@@ -69,8 +74,11 @@ public partial class UiFlowDriver : Node
         _board.BattleLost += () => _lost = true;
 
         // Title → New Run (reroll once, then begin).
+        if (await ExpectButton("PLAY") == null) return;
+        await Shot("01-title");
         if (!await PressButton("PLAY")) return;
         if (!await PressButton("REROLL ARMY")) return;
+        await Shot("02-newrun");
         if (!await PressButton("BEGIN RUN")) return;
 
         // First-run tutorial (only if this save hasn't seen it).
@@ -85,8 +93,31 @@ public partial class UiFlowDriver : Node
         // HUD up? Pause and resume.
         if (await ExpectButton("II") == null) return;
         if (!await PressButton("II")) return;
+        await Shot("03-pause");
         if (!await PressButton("RESUME")) return;
         if (await ExpectButton("II") == null) return;
+
+        // Screenshot a selection (highlights + inspection chip) and an
+        // enemy-reach inspection before playing the battle out.
+        if (_shotDir != null)
+        {
+            foreach (var p in _board.DebugPieces)
+            {
+                if (!p.Alive || p.Side != PieceSide.Player) continue;
+                _board.DebugTap(p.Coord);
+                await Shot("04-selection");
+                _board.DebugTap(p.Coord);   // toggle off
+                break;
+            }
+            foreach (var p in _board.DebugPieces)
+            {
+                if (!p.Alive || p.Side != PieceSide.Enemy) continue;
+                _board.DebugTap(p.Coord);
+                await Shot("05-enemy-reach");
+                _board.ClearSelection();
+                break;
+            }
+        }
 
         // Play battle 1 to completion via the shared bot.
         if (!await PlayBattle()) return;
@@ -95,6 +126,7 @@ public partial class UiFlowDriver : Node
         {
             GD.Print("[UIFLOW] battle 1 won → shop");
             if (await ExpectButton("NEXT BATTLE") == null) return;
+            await Shot("06-shop");
 
             // Exercise a purchase if anything is affordable.
             var buy = FindButton("BUY", requireEnabled: true);
@@ -135,6 +167,8 @@ public partial class UiFlowDriver : Node
             return;
         }
         GD.Print("[UIFLOW] deliberate defeat → game over");
+        if (await ExpectButton("NEW RUN") == null) return;
+        await Shot("07-gameover");
         if (!await PressButton("NEW RUN")) return;
         if (await ExpectButton("BEGIN RUN") == null) return;
         if (!await PressButton("‹")) return;   // NewRun back chevron
@@ -170,6 +204,17 @@ public partial class UiFlowDriver : Node
     }
 
     // ----- Helpers ---------------------------------------------------------
+
+    // Capture the rendered viewport (windowed runs only — headless renders
+    // nothing). Waits out the screen cross-fade first.
+    private async Task Shot(string name)
+    {
+        if (_shotDir == null) return;
+        await Frames(25);
+        var img = GetViewport().GetTexture().GetImage();
+        var err = img.SavePng($"{_shotDir}/{name}.png");
+        GD.Print(err == Error.Ok ? $"[UIFLOW] shot {name}" : $"[UIFLOW] shot {name} FAILED: {err}");
+    }
 
     private async Task Frames(int n)
     {
