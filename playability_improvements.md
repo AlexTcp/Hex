@@ -144,3 +144,14 @@ out of commits.)
       it would break the death-tile fairness promise.
 - [x] **Measured** — 300 runs, 0 failures: win rate 25% (was 27%), battle-12 clear 65%
       (was 68%) — slightly harder, more thematic finale; curve stays smooth. UI-flow PASS.
+
+## Round 10
+
+- [x] **Ambient pad loop** — `audio/ambient.wav` (12s Cm(add9) slate-room pad; every partial
+      and LFO completes integer cycles per loop so the wrap is sample-exact; recipe in
+      `dev/gen_sfx.py`). `Sfx` plays it on a dedicated player at −16 dB with
+      AudioStreamWav Forward loop; the sound toggle stops/starts it.
+- [x] **Shop shows army composition** — the money line now lists piece monograms
+      ("army Pa Pa Kn Ro · reserve Bi") instead of bare counts.
+- [x] **Verified** — build clean; import clean; 60 autoplay runs 0 failures (21 wins);
+      UI-flow PASS.

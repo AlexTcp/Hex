@@ -29,6 +29,7 @@ public partial class Sfx : Node
 
     private readonly Dictionary<string, AudioStream> _streams = new();
     private readonly AudioStreamPlayer[] _pool = new AudioStreamPlayer[PoolSize];
+    private AudioStreamPlayer _ambient;
     private int _next;
 
     public static bool Enabled { get; private set; } = true;
@@ -56,6 +57,18 @@ public partial class Sfx : Node
         var cfg = new ConfigFile();
         if (cfg.Load(SettingsPath) == Error.Ok)
             Enabled = (bool)cfg.GetValue(Section, "sound_enabled", true);
+
+        // Quiet seamless room pad under everything (loop is sample-exact).
+        if (ResourceLoader.Exists("res://audio/ambient.wav")
+            && GD.Load<AudioStream>("res://audio/ambient.wav") is AudioStreamWav pad)
+        {
+            pad.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
+            pad.LoopBegin = 0;
+            pad.LoopEnd = pad.Data.Length / 2;   // 16-bit mono: 2 bytes per frame
+            _ambient = new AudioStreamPlayer { Stream = pad, VolumeDb = -16f };
+            AddChild(_ambient);
+            if (Enabled) _ambient.Play();
+        }
     }
 
     public static void SetEnabled(bool enabled)
@@ -64,6 +77,13 @@ public partial class Sfx : Node
         var cfg = new ConfigFile();
         cfg.SetValue(Section, "sound_enabled", enabled);
         cfg.Save(SettingsPath);
+
+        var amb = _instance?._ambient;
+        if (amb != null)
+        {
+            if (enabled && !amb.Playing) amb.Play();
+            else if (!enabled) amb.Stop();
+        }
     }
 
     public override void _ExitTree()

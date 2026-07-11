@@ -142,4 +142,34 @@ l1 = sine_note(220.0, 320, amp=0.4, decay=3.5, harmonics=((1, 1.0), (2, 0.3), (3
 l2 = sine_note(155.56, 520, amp=0.42, decay=3.0, harmonics=((1, 1.0), (2, 0.3), (3, 0.1)))
 write_wav("lose", mix(l1, delayed(l2, 240)))
 
+# --- ambient: seamless slate-room pad -----------------------------------------
+# Every partial and every LFO completes an integer number of cycles over the
+# loop, so the wraparound is sample-exact. Cm(add9) voicing, very quiet.
+T = 12.0
+N = int(SR * T)
+
+
+def q(f):
+    """Quantize a frequency to a whole number of cycles per loop."""
+    return round(f * T) / T
+
+
+PARTIALS = [
+    (q(65.41), 0.30, 1, 0.0),    # C2
+    (q(98.00), 0.22, 2, 1.3),    # G2
+    (q(130.81), 0.16, 3, 2.1),   # C3
+    (q(155.56), 0.13, 2, 4.0),   # Eb3
+    (q(196.00), 0.10, 1, 0.7),   # G3
+    (q(293.66), 0.05, 3, 5.2),   # D4 (add9 shimmer)
+]
+pad = [0.0] * N
+for f, amp, lfo_cycles, phase in PARTIALS:
+    detune = 1.0 / T  # +1 cycle/loop: a once-per-loop beat, still seamless
+    for i in range(N):
+        t = i / SR
+        lfo = 0.65 + 0.35 * math.sin(2 * math.pi * lfo_cycles * t / T + phase)
+        v = math.sin(2 * math.pi * f * t) + 0.6 * math.sin(2 * math.pi * (f + detune) * t + 0.5)
+        pad[i] += amp * 0.28 * v * lfo
+write_wav("ambient", pad)
+
 print("done ->", OUT)

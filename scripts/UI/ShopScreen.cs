@@ -129,7 +129,7 @@ public partial class ShopScreen : Control
     private void RefreshMoney()
     {
         if (_run == null) return;
-        _money.Text = $"${_run.Money}   ·   army {_run.Army.Count}   reserve {_run.Reserve.Count}";
+        _money.Text = $"${_run.Money}   ·   army {Monograms(_run.Army)}   ·   reserve {(_run.Reserve.Count > 0 ? Monograms(_run.Reserve) : "—")}";
         for (int i = 0; i < _buyButtons.Count; i++)
         {
             var (buy, price) = _buyButtons[i];
@@ -137,6 +137,20 @@ public partial class ShopScreen : Control
                 buy.Disabled = _run.Money < price;
         }
         _reroll.Disabled = _run.Money < RerollPrice;
+    }
+
+    // "Pa Pa Kn Ro" — the composition matters for purchase decisions, not just
+    // the count.
+    private static string Monograms(List<PieceKind> pieces)
+    {
+        if (pieces.Count == 0) return "—";
+        var sb = new System.Text.StringBuilder(pieces.Count * 3);
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            if (i > 0) sb.Append(' ');
+            sb.Append(PieceCatalog.Info(pieces[i]).Monogram);
+        }
+        return sb.ToString();
     }
 
     // ----- Offers ------------------------------------------------------------
