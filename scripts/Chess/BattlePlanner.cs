@@ -81,6 +81,14 @@ public static class BattlePlanner
         output.Clear();
         int budget = 3 + battle * 2 + (RunState.IsBossBattle(battle) ? 3 : 0);
 
+        // The finale always fields the enemy crown — a guaranteed Queen (paid
+        // for from the same budget) so the last battle has a face.
+        if (battle >= RunState.FinalBattle)
+        {
+            output.Add(PieceKind.Queen);
+            budget -= Cost(PieceKind.Queen);
+        }
+
         while (budget >= 2 && output.Count < MaxEnemies)
         {
             var pick = PickAffordable(battle, budget, rng);

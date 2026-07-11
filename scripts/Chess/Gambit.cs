@@ -25,6 +25,8 @@ public enum GambitKind
     BishopEcho,
     PawnAmbition,
     RoyalGuard,
+    Quartermaster,
+    Stonemason,
 }
 
 public readonly record struct GambitInfo(GambitKind Kind, string Name, string Description, int Price);
@@ -49,6 +51,10 @@ public static class GambitCatalog
             "Pawn promotions also grant +3 money.", 6),
         new(GambitKind.RoyalGuard, "Royal Guard",
             "The first capture against your King each battle is blocked.", 9),
+        new(GambitKind.Quartermaster, "Quartermaster",
+            "Clearing a battle pays +3 extra money.", 6),
+        new(GambitKind.Stonemason, "Stonemason",
+            "Cracked tiles hold together one extra turn before collapsing.", 7),
     };
 
     public static GambitInfo Info(GambitKind kind)

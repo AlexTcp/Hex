@@ -380,6 +380,11 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (_boss != BossModifier.None)
             EmitSignal(SignalName.StatusNote,
                 $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
+
+        // The finale's guaranteed Queen gets her own announcement (last note wins
+        // the flourish; the HUD label still names the boss).
+        if (battle == RunState.FinalBattle)
+            EmitSignal(SignalName.StatusNote, "THE ENEMY CROWN TAKES THE FIELD");
     }
 
     private void ResetBattleState(int activeRadius)
@@ -1174,7 +1179,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             if (_crumbleTimer == 0 && _outerRadius >= 2)
             {
                 CrackRing(_outerRadius);
-                _crackCountdown = CrackGraceActions;
+                _crackCountdown = CrackGrace();
             }
             EmitSignal(SignalName.CrumbleChanged, _crumbleTimer, _cracked.Count > 0);
             return;
@@ -1188,10 +1193,14 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (_outerRadius >= 2)
         {
             CrackRing(_outerRadius);
-            _crackCountdown = CrackGraceActions;
+            _crackCountdown = CrackGrace();
         }
         EmitSignal(SignalName.CrumbleChanged, 0, _cracked.Count > 0);
     }
+
+    // Actions a cracked ring holds before collapsing (Stonemason buys one more).
+    private int CrackGrace() =>
+        CrackGraceActions + (_run != null && _run.Has(GambitKind.Stonemason) ? 1 : 0);
 
     private void CrackRing(int radius)
     {
@@ -1255,8 +1264,9 @@ public partial class HexBoard : Node3D, IBattleQuery
         _running = false;
         EndSelect();
         AddScore(250 * _run.Battle);
-        AddMoney(4 + _run.Battle);
-        ShowMoneyPop(HexCoord.Zero, 4 + _run.Battle);
+        int clearPay = 4 + _run.Battle + (_run.Has(GambitKind.Quartermaster) ? 3 : 0);
+        AddMoney(clearPay);
+        ShowMoneyPop(HexCoord.Zero, clearPay);
 
         // The army going forward is whoever survived, in board order.
         _run.Army.Clear();

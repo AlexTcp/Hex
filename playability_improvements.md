@@ -133,3 +133,14 @@ out of commits.)
 - [x] **Teach reserves & bosses** — 4th tutorial step covers deploy costs-your-action and
       the every-4th-battle boss rule.
 - [x] **Verified** — build clean; 60 autoplay runs 0 failures (17 wins); UI-flow PASS.
+
+## Round 9
+
+- [x] **Two new gambits** — Quartermaster (battle-clear pays +3, resolved in WinBattle) and
+      Stonemason (cracked tiles hold one extra action, resolved in the crack-grace reset).
+      Both auto-appear in the shop via GambitCatalog.All.
+- [x] **Finale: the enemy crown takes the field** — battle 12 always fields a Queen (paid
+      from the normal budget), announced at battle start. Rejected a "two enemies act" boss:
+      it would break the death-tile fairness promise.
+- [x] **Measured** — 300 runs, 0 failures: win rate 25% (was 27%), battle-12 clear 65%
+      (was 68%) — slightly harder, more thematic finale; curve stays smooth. UI-flow PASS.
