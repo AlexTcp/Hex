@@ -58,7 +58,7 @@ public partial class GameScreen : Node3D
             BackgroundColor = new Color(0.055f, 0.063f, 0.082f),
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
             AmbientLightColor = new Color(0.165f, 0.196f, 0.259f),
-            AmbientLightEnergy = 0.30f,
+            AmbientLightEnergy = 0.25f,   // a touch lower so carved forms keep contrast
             TonemapMode = Godot.Environment.ToneMapper.Filmic,
             TonemapExposure = 1.0f,
         };
@@ -66,8 +66,8 @@ public partial class GameScreen : Node3D
 
         var key = new DirectionalLight3D
         {
-            LightColor = new Color(1.0f, 0.957f, 0.878f),   // warm key
-            LightEnergy = 1.15f,
+            LightColor = new Color(1.0f, 0.953f, 0.866f),   // warm key
+            LightEnergy = 1.30f,
             ShadowEnabled = true,
         };
         key.RotationDegrees = new Vector3(-58f, 28f, 0f);
@@ -95,18 +95,60 @@ public partial class GameScreen : Node3D
         spot.RotationDegrees = new Vector3(-90f, 0f, 0f);  // straight down at board centre
         AddChild(spot);
 
-        // Framing is biased for SAFE MARGIN (the one thing not verifiable without a
-        // render): pulled back to ~10.9u with FOV 46 so the radius-4 board's near
-        // edge (~z 3.8 incl. tile geometry, ~21° off-axis) clears the ~23° half-FOV
-        // with room to spare; the vignette frames the slack. Nudge live in-editor for
-        // a tighter fit if desired.
+        // Board plinth + stage floor: lift the board out of the void so it reads
+        // as a tournament set on a pedestal in a pool of light. The hexagonal
+        // plinth's top sits flush under the tiles (which cast their grounding
+        // shadow onto it); the vast matte floor catches the top-down spot as a
+        // soft circle and fades into the background under the vignette.
+        var floor = new MeshInstance3D
+        {
+            Mesh = new PlaneMesh { Size = new Vector2(60f, 60f) },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.052f, 0.060f, 0.080f),
+                Roughness = 0.95f,
+                Metallic = 0.0f,
+            },
+            Position = new Vector3(0f, -0.40f, 0f),
+        };
+        AddChild(floor);
+
+        var plinth = new MeshInstance3D
+        {
+            Mesh = new CylinderMesh
+            {
+                TopRadius = 5.7f,
+                BottomRadius = 6.05f,
+                Height = 0.6f,
+                RadialSegments = 6,
+            },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.105f, 0.120f, 0.152f),
+                Metallic = 0.25f,
+                MetallicSpecular = 0.45f,
+                Roughness = 0.42f,
+                RimEnabled = true,
+                Rim = 0.2f,
+            },
+            Position = new Vector3(0f, -0.385f, 0f),   // top ≈ -0.085, just under the tiles
+            RotationDegrees = new Vector3(0f, 30f, 0f),
+        };
+        AddChild(plinth);
+
+        // A cinematic ~48° oblique (was near-top-down): the carved army is a set
+        // of figurines, and figurines only read from a three-quarter view — a
+        // top-down camera flattens them to specks. Pulled back to ~11.9u with
+        // FOV 50 so the radius-4 board (x ±4.3, z ±3.8 incl. tile geometry) still
+        // clears the frame with margin (vertical board span ~28° inside the 50°
+        // FOV; the vignette frames the slack). Verified by render, not by eye.
         var camera = new Camera3D
         {
             Projection = Camera3D.ProjectionType.Perspective,
-            Fov = 46f,
+            Fov = 50f,
             Current = true,
         };
-        camera.Position = new Vector3(0f, 10.5f, 3.0f);
+        camera.Position = new Vector3(0f, 8.8f, 8.0f);
         AddChild(camera);
         camera.LookAt(Vector3.Zero, Vector3.Up);   // after entering tree (uses global xform)
         return camera;

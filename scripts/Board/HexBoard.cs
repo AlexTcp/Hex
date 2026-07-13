@@ -42,7 +42,7 @@ public partial class HexBoard : Node3D, IBattleQuery
 {
     [Export] public int Radius = 4;
 
-    private const float PieceY = 0.35f;
+    private const float PieceY = 0.075f;   // feet plant on the tile top (piece meshes bake base-at-origin)
     private const float RingY = 0.09f;
     private const int StandoffActions = 16;    // capture-free terminal actions before adjudication
 
@@ -396,6 +396,8 @@ public partial class HexBoard : Node3D, IBattleQuery
             Mesh = PieceVisuals.MeshFor(kind),
             MaterialOverride = PieceVisuals.MaterialFor(side),
             Position = HexLayout.ToWorld(coord, PieceY),
+            // Armies face each other: the enemy (north) turns 180° to face back.
+            Rotation = new Vector3(0f, side == PieceSide.Player ? 0f : Mathf.Pi, 0f),
             Scale = Vector3.Zero,
         };
         AddChild(mesh);

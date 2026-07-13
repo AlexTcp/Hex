@@ -239,7 +239,7 @@ public partial class HexBoard
             };
             AddChild(_captureParticles);
         }
-        _captureParticles.Position = HexLayout.ToWorld(coord, PieceY);
+        _captureParticles.Position = HexLayout.ToWorld(coord, PieceY + 0.3f);
         _captureParticles.Restart();
         _captureParticles.Emitting = true;
     }
