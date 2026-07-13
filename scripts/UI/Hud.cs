@@ -101,7 +101,7 @@ public partial class Hud : Control
         // Full-rect with centred alignment: anchoring the label itself to the
         // centre broke when Flourish reset Position (notes drew from the
         // screen's top-left corner), and long boss text needs to wrap.
-        _note = UiTheme.MakeLabel("", UiTheme.ComboSize, UiTheme.Accent, HorizontalAlignment.Center);
+        _note = UiTheme.Heading("", UiTheme.ComboSize, UiTheme.Accent, HorizontalAlignment.Center);
         _note.SetAnchorsPreset(LayoutPreset.FullRect);
         _note.VerticalAlignment = VerticalAlignment.Center;
         _note.AutowrapMode = TextServer.AutowrapMode.WordSmart;

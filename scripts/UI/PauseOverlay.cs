@@ -52,7 +52,7 @@ public partial class PauseOverlay : Control
         v.AddThemeConstantOverride("separation", 18);
         panel.AddChild(v);
 
-        v.AddChild(UiTheme.MakeLabel("PAUSED", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center));
+        v.AddChild(UiTheme.Heading("PAUSED", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center));
         _stats = UiTheme.MakeLabel("", UiTheme.BodySmallSize, UiTheme.TextMuted, HorizontalAlignment.Center);
         v.AddChild(_stats);
 

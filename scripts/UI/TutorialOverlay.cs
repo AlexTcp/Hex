@@ -68,7 +68,7 @@ public partial class TutorialOverlay : Control
         v.AddThemeConstantOverride("separation", 16);
         _panel.AddChild(v);
 
-        _title = UiTheme.MakeLabel("", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
+        _title = UiTheme.Heading("", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
         v.AddChild(_title);
 
         _body = UiTheme.MakeLabel("", UiTheme.BodySize, UiTheme.Text, HorizontalAlignment.Center);

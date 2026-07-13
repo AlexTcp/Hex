@@ -67,7 +67,7 @@ public partial class ShopScreen : Control
         col.AddThemeConstantOverride("separation", 16);
         margin.AddChild(col);
 
-        _heading = UiTheme.MakeLabel("THE EXCHEQUER", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
+        _heading = UiTheme.Heading("THE EXCHEQUER", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
         col.AddChild(_heading);
 
         _bossLine = UiTheme.MakeLabel("", UiTheme.BodySmallSize, UiTheme.Danger, HorizontalAlignment.Center);
@@ -260,7 +260,7 @@ public partial class ShopScreen : Control
         card.AddChild(v);
 
         v.AddChild(UiTheme.MakeLabel(tag, UiTheme.ChipSize, UiTheme.TextMuted, HorizontalAlignment.Center));
-        v.AddChild(UiTheme.MakeLabel(name, UiTheme.BodySize, UiTheme.Accent, HorizontalAlignment.Center));
+        v.AddChild(UiTheme.Heading(name, UiTheme.BodySize, UiTheme.Accent, HorizontalAlignment.Center));
 
         var d = UiTheme.MakeLabel(desc, 17, UiTheme.Text, HorizontalAlignment.Center);
         d.AutowrapMode = TextServer.AutowrapMode.WordSmart;

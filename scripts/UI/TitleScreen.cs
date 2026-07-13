@@ -52,13 +52,13 @@ public partial class TitleScreen : Control
         v.AddThemeConstantOverride("separation", 22);
         center.AddChild(v);
 
-        var logo = UiTheme.MakeLabel("HEX", UiTheme.TitleSize, UiTheme.Accent, HorizontalAlignment.Center);
+        var logo = UiTheme.Heading("HEX", UiTheme.TitleSize, UiTheme.Accent, HorizontalAlignment.Center);
         logo.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.6f));
         logo.AddThemeConstantOverride("shadow_offset_y", 4);
         logo.AddThemeConstantOverride("shadow_offset_x", 0);
         v.AddChild(logo);
 
-        v.AddChild(UiTheme.MakeLabel("a hex-chess roguelike", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center));
+        v.AddChild(UiTheme.Heading("a hex-chess roguelike", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center));
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 28) });
 
         var play = UiTheme.PrimaryButton("PLAY");

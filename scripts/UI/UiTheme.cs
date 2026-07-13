@@ -37,6 +37,15 @@ public static class UiTheme
     public static readonly Color DangerDim = new(0.431f, 0.118f, 0.102f);
     public static readonly Color Success = new(0.310f, 0.698f, 0.525f);
 
+    // ----- Display font ---------------------------------------------------
+    // Body / HUD numerals stay on the crisp default sans; the *display* type —
+    // logo, screen headings, piece & gambit names, monograms, the centre
+    // flourish — is set in Kurale, an elegant serif that reads like an engraved
+    // tournament plate. Loaded lazily so headless logic tests never touch it.
+    private static FontFile _displayFont;
+    public static FontFile DisplayFont =>
+        _displayFont ??= ResourceLoader.Load<FontFile>("res://fonts/Kurale-Regular.ttf");
+
     // ----- Type sizes (authored @ 1280x720; canvas stretch scales them) ---
     public const int TitleSize = 96;
     public const int HeadingSize = 40;
@@ -161,6 +170,17 @@ public static class UiTheme
 
     public static Label Muted(string text, int size) =>
         MakeLabel(text, size, TextMuted, HorizontalAlignment.Center);
+
+    // Display-type label: same as MakeLabel but set in the Kurale serif. Use for
+    // logos, screen headings, card titles, monograms and the centre flourish.
+    public static Label Heading(string text, int size, Color color,
+        HorizontalAlignment align = HorizontalAlignment.Center)
+    {
+        var l = MakeLabel(text, size, color, align);
+        var f = DisplayFont;
+        if (f != null) l.AddThemeFontOverride("font", f);
+        return l;
+    }
 
     // A small rounded pill containing one line of text.
     public static PanelContainer Chip(string text, int fontSize, Color textColor)

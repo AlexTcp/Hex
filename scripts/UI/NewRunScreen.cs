@@ -64,7 +64,7 @@ public partial class NewRunScreen : Control
         back.CustomMinimumSize = new Vector2(64, 56);
         back.Pressed += () => _onBack?.Invoke();
         header.AddChild(back);
-        var title = UiTheme.MakeLabel("MUSTER YOUR ARMY", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
+        var title = UiTheme.Heading("MUSTER YOUR ARMY", UiTheme.HeadingSize, UiTheme.Text, HorizontalAlignment.Center);
         title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         header.AddChild(title);
         header.AddChild(new Control { CustomMinimumSize = new Vector2(64, 0) });
@@ -122,12 +122,12 @@ public partial class NewRunScreen : Control
         var circle = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
         circle.CustomMinimumSize = new Vector2(58, 58);
         circle.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.Panel, 29, 1, UiTheme.Border));
-        var mono = UiTheme.MakeLabel(info.Monogram.ToUpperInvariant(), 24, UiTheme.Accent, HorizontalAlignment.Center);
+        var mono = UiTheme.Heading(info.Monogram.ToUpperInvariant(), 24, UiTheme.Accent, HorizontalAlignment.Center);
         mono.VerticalAlignment = VerticalAlignment.Center;
         circle.AddChild(mono);
         v.AddChild(circle);
 
-        v.AddChild(UiTheme.MakeLabel(info.Name, UiTheme.BodySize, UiTheme.Text, HorizontalAlignment.Center));
+        v.AddChild(UiTheme.Heading(info.Name, UiTheme.BodySize, UiTheme.Text, HorizontalAlignment.Center));
 
         var desc = UiTheme.MakeLabel(info.Description, 17, UiTheme.TextMuted, HorizontalAlignment.Center);
         desc.AutowrapMode = TextServer.AutowrapMode.WordSmart;

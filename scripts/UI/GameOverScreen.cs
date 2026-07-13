@@ -96,7 +96,7 @@ public partial class GameOverScreen : Control
         _newBestChip.Visible = false;
         v.AddChild(_newBestChip);
 
-        _title = UiTheme.MakeLabel("ARMY FALLEN", UiTheme.HeadingSize, UiTheme.Danger, HorizontalAlignment.Center);
+        _title = UiTheme.Heading("ARMY FALLEN", UiTheme.HeadingSize, UiTheme.Danger, HorizontalAlignment.Center);
         v.AddChild(_title);
 
         _subtitle = UiTheme.MakeLabel("", UiTheme.BodySize, UiTheme.TextMuted, HorizontalAlignment.Center);
