@@ -6,3 +6,4 @@ export_credentials.cfg
 *.apk
 *.keystore
 old_gdscript_project/
+*.bak
