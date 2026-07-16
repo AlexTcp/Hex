@@ -110,3 +110,7 @@ The codebase is heavily optimized for low-spec mobile: **GL Compatibility render
 | `playability_improvements.md` | Round-by-round worklog of the autonomous improvement loop (resume point for future sessions) |
 
 **Premium Slate / Compatibility constraints (hard rules for visual work):** the GL Compatibility renderer has NO glow/bloom, SSAO, SSR, ReflectionProbe, SDFGI, volumetric fog, DOF, FXAA/TAA, or reliable GPU particles. The "glow" of the selected piece is an **emissive material**; the vignette is a **`canvas_item` shader** ColorRect; capture sparks use **`CpuParticles3D`**; AA is **`msaa_3d`** only (cosmetic — never make readability depend on it). Keep tiles at `RadialSegments = 6` (a hex grid, not a dodecagon).
+
+## Godot Engine Source
+
+You can reference the engine code at any time: the Godot 4.6.2-stable source is checked out at `G:\godot`.
