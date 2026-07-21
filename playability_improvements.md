@@ -570,3 +570,29 @@ polish (esp. desktop, which has no per-app volume)._
       dangling to a nonexistent resource. Confirmed its UID (`cltxgi8xk4mpq`) is referenced
       nowhere, then `git rm -f` (the stat-cache false-positive that blocked a plain `git rm`
       in Round 33 needed the force). Build clean; headless boot clean (no UID/import warnings).
+
+## Round 40
+
+_Rung 4. [ui]. The settings drawer now hosts two player-facing controls (Sound toggle +
+the Round-38 volume slider), so a clean drawer→logs handoff is more relevant._
+
+- [x] **[ui] Instant settings→logs handoff** (pillar 2 responsive UI) — tapping "Logs" ran
+      the animated `Close()` (0.22s slide + scrim fade) THEN opened the DebugModal, so the
+      closing drawer's scrim overlaid the freshly-opened log viewer for that window, eating
+      its input and flashing a dim overlay. Added `CloseInstant()` (kill slide, hide, pop the
+      modal) used only for the logs handoff, so the log viewer opens over a clean screen.
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS. Self-contained (mirrors the
+      existing close end-state without the animation); the logs path is a dev tool not driven
+      by the harness, so verified by no-regression + inspection.
+
+---
+
+_Session note (rounds 30-40, Linux): the highest-value work is done — a rung-2 softlock, the
+complete + accurate death-tile telegraph (deploy + capture protections), pooled FX so
+multi-event actions read, confirm-before-abandon, purchase/score juice, volume slider, and 5
+permanent harness guards/coverage additions. Remaining audit items are deliberately NOT taken
+as they'd be marginal or harmful: Bishop-Echo landing-ring position (the copper ring correctly
+marks the CAPTURE hex, not a bug); BEST BATTLE vs BATTLE REACHED wording (each label is
+accurate in its own context, and changing it risks confusion); enemy-pawn outer-ring promotion
+(making enemy pawns promote would BUFF an already-hard finale at 57% — wrong balance direction).
+Continue with genuine polish only; do not churn the polished game for its own sake._

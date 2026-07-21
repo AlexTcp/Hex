@@ -20,3 +20,4 @@
 - Round 37 [feel]: the HUD score now counts up to big capture/clear payouts instead of snapping, so the reward reads.
 - Round 38 [qol]: added a master volume slider to the settings drawer (persisted), alongside the existing sound on/off. Also fixed a latent settings-save bug where writing one audio setting would drop the other.
 - Round 39: removed a dangling CharacterSelect.cs.uid sidecar left over from an old refactor (repo hygiene; no gameplay effect).
+- Round 40 [ui]: opening the log viewer from the settings drawer no longer flashes the closing drawer over it / eats its first input (the drawer now closes instantly for that handoff).

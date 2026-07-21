@@ -184,8 +184,21 @@ public partial class SettingsModal : Control
 
     private void OnLogsPressed()
     {
-        Close();
+        // Close INSTANTLY (not the 0.22s slide) before opening the log viewer:
+        // an animated close would leave this drawer's scrim fading over the
+        // freshly-opened DebugModal, eating its input and flashing a dim overlay.
+        CloseInstant();
         _onLogsRequested?.Invoke();
+    }
+
+    private void CloseInstant()
+    {
+        if (!_open) return;
+        _open = false;
+        DebugLog.PopModal();
+        if (_slide != null && _slide.IsValid()) _slide.Kill();
+        Visible = false;
+        MouseFilter = MouseFilterEnum.Ignore;
     }
 
     private void OnScrimInput(InputEvent ev)
