@@ -1,6 +1,8 @@
 # Playability Improvements — Worklog
 
 _Started: 2026-07-10_
+_Vision (derived — Hex is INACTIVE/no-vision in Godot.md): (1) Premium-slate tactile presentation — carved ivory/oxblood figurines, cinematic board, call-and-response readability on low-spec mobile; (2) Fair, readable hex-chess tactics — death-tile telegraphing, inspection, three termination guarantees, no unresolvable states; (3) Roguelike run arc — shop economy, gambits, tile upgrades, bosses & themed rosters, permadeath army upkeep. Rung-4 biased to polish/feel._
+_Logs scanned through: 2026-07-20 (Linux session start; user:// = ~/.local/share/godot/app_userdata/Hex)_
 
 Loop driven by `/improve`. Bar: "is this game playable and getting better?"
 Verification: `dotnet build Hex.csproj` + headless boot of `scenes/game.tscn` +
