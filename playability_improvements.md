@@ -420,3 +420,25 @@ were [ui]/[qol], so [feel] respects the variety rule). All three confirmed by re
       Behaviour is correct by construction (independent pooled nodes + tweens) + no
       regression; NOT eyeball-confirmed in-render (headless env — windowed capture on the
       shared :0 display is slow and risks the user's desktop, so it was not run).
+
+## Round 32
+
+_Rung 4 continues. Pillar-2/3 readability. [ui] tag (variety OK — last tagged rounds were
+[feel] R31 and rungs-2/3 R30). Both from the audit's opportunity list; both complete an
+existing system rather than adding new mechanics._
+
+- [x] **[ui] Deploy mode telegraphs death tiles** (pillar 2 fair/readable tactics) —
+      `HexBoard.BeginDeploy` painted every legal deploy tile safe-gold; a normal move gets
+      a red death-tile warning but a deploy did not, so a reserve piece could be dropped
+      straight into an enemy's capture range unwarned. Refactored `IsDeathTile` into a
+      coord-based `IsDeathTileHypo(from,dest)` core and added `IsDeployDeathTile(dest)`
+      (hypo origin == destination: a fresh piece appears, no line opens). Deploy tiles an
+      enemy could capture next turn now pulse danger-red like move destinations.
+- [x] **[ui] Shop shows piece → reserve when the army is full** (pillar 3 economy clarity) —
+      at `ArmyCap` a bought piece silently overflows to the reserve; the piece card's tag
+      now reads "PIECE → RESERVE" so the purchase's destination is never a surprise.
+- [x] **Verified** — build clean (0 warnings); 955 unit checks; 100-run autoplay 27 wins /
+      0 failures / exit 0 / orphans=0 (the IsDeathTile refactor left the bot's danger
+      scoring unchanged and deploying with the new check never crashed); UI-flow PASS
+      (shop still builds/buys). Deploy red-paint is a direct mirror of the verified
+      move-selection path; exact render not eyeball-confirmed (headless).

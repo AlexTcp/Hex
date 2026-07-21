@@ -9,3 +9,5 @@
 - Round 31 [feel]: floating +$N money pops now use a pool, so a capture payout and the battle-clear bonus (and Bishop Echo double-captures) each rise from their own hex instead of collapsing into one.
 - Round 31 [feel]: capture spark bursts now use a pool, so a capture and its counter-capture no longer teleport a single spark system mid-flight.
 - Round 31 [feel]: the HUD score pop no longer stacks overlapping scale tweens on multi-score actions (kills the prior pop and resets first).
+- Round 32 [ui]: deploy mode now paints death tiles red — a reserve piece dropped into an enemy's capture range gets the same warning a normal move does (previously deploy tiles were all safe-gold).
+- Round 32 [ui]: shop piece cards read "PIECE → RESERVE" when the army is at its cap, so it's clear a purchase will overflow to the reserve.

@@ -169,7 +169,10 @@ public partial class ShopScreen : Control
         {
             var kind = ShopOffers.RollPieceOffer(_run.Battle, _rng);
             var info = PieceCatalog.Info(kind);
-            AddOffer("PIECE", info.Name, info.Description, info.Price, () => _run.AddPiece(kind));
+            // A full army (ArmyCap) sends a bought piece to the reserve instead —
+            // say so on the card so the purchase's destination is never a surprise.
+            string tag = _run.Army.Count >= RunState.ArmyCap ? "PIECE → RESERVE" : "PIECE";
+            AddOffer(tag, info.Name, info.Description, info.Price, () => _run.AddPiece(kind));
         }
 
         // One unowned gambit (if any remain).

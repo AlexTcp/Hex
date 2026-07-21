@@ -595,9 +595,17 @@ public partial class HexBoard : Node3D, IBattleQuery
     // Exact danger test: could any non-stunned enemy capture `dest` next turn,
     // with `piece` hypothetically relocated there? Zero-alloc (pooled scratch),
     // no RNG — the AI always takes an available capture.
-    private bool IsDeathTile(BattlePiece piece, HexCoord dest)
+    private bool IsDeathTile(BattlePiece piece, HexCoord dest) => IsDeathTileHypo(piece.Coord, dest);
+
+    // Deploy variant: a fresh player piece appears AT `dest` and no tile is
+    // vacated (deploying opens no enemy line-of-attack), so the hypothetical
+    // origin is the destination itself — OccupantSide then reports `dest` as
+    // player-held and every other tile at its true occupancy.
+    private bool IsDeployDeathTile(HexCoord dest) => IsDeathTileHypo(dest, dest);
+
+    private bool IsDeathTileHypo(HexCoord from, HexCoord dest)
     {
-        _hypoFrom = piece.Coord;
+        _hypoFrom = from;
         _hypoTo = dest;
         _hypoActive = true;
         bool danger = false;
@@ -642,7 +650,11 @@ public partial class HexBoard : Node3D, IBattleQuery
                 if (pass == 0 && c.R < 1) continue;    // prefer the home half
                 _highlighted.Add(c);
                 if (_tiles.TryGetValue(c, out var tile))
-                    tile.Mesh.MaterialOverride = HighlightMaterialShared;
+                    // Same fairness cue as move selection: a deploy tile an enemy
+                    // could capture next turn pulses danger-red, not safe-gold.
+                    tile.Mesh.MaterialOverride = IsDeployDeathTile(c)
+                        ? DangerHighlightMaterialShared
+                        : HighlightMaterialShared;
                 found++;
             }
         }
