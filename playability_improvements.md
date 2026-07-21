@@ -526,3 +526,20 @@ was a false LIE on protected tiles — discouraging safe moves the player paid t
       new `PhaseProtectionChecks` in the UI-flow driver deterministically asserts the predicate
       (RG blocks King only when owned+unused; Shield blocks any piece on an upgraded tile) —
       proven red→green (neutering CaptureBlockedAt fails uiflow with the exact block assertions).
+
+## Round 37
+
+_Rung 4 continues. [feel] (variety OK: last tagged rounds [ui] R35, fairness/rung-3 R36).
+A recommended juice recipe not yet present._
+
+- [x] **[feel] Score count-up** (pillar 1 premium tactile presentation) — `Hud.SetScore`
+      snapped the number instantly; big capture / clear payouts (500-3000 pts) now roll up
+      over 0.35s via a `TweenMethod`, so the reward reads. Only counts UP (a lower value =
+      run reset → snap), kills any in-flight count so rapid back-to-back updates don't fight,
+      and the scale pop moved to its own tween so the two don't interfere. `_scoreShown`
+      tracks the displayed number; final value is exactly the target (TweenMethod ends at `to`).
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS (count-up runs through
+      real battles, no crash); Xvfb render shows a valid in-battle score (08-money-pop: 950
+      with the +$N pop + spark) and the end screen's own score correct. Final value is
+      guaranteed by construction (TweenMethod ends at `to`) and run.Score stays the separate
+      authoritative record — the count-up is display-only, so no data/record risk.

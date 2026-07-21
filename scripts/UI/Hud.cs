@@ -34,7 +34,9 @@ public partial class Hud : Control
     private Label _enemiesLabel;
     private Label _moneyLabel;
     private Label _scoreValue;
-    private Tween _scoreTween;
+    private Tween _scoreTween;      // rolling count-up of the displayed number
+    private Tween _scorePopTween;   // scale pop
+    private int _scoreShown;        // the number currently displayed (for count-up)
     private Label _crumbleLabel;
     private PanelContainer _crumbleChip;
     private Label _note;
@@ -215,18 +217,39 @@ public partial class Hud : Control
     public void SetScore(int score)
     {
         if (_scoreValue == null) return;
-        _scoreValue.Text = score.ToString();
         _scoreValue.PivotOffset = _scoreValue.Size / 2f;
-        // Kill any in-flight pop and reset scale first: multi-score actions (capture +
-        // clear bonus, Bishop Echo) fire back-to-back, and overlapping tweens on the
-        // same scale property would fight and could leave the label stuck mid-pop.
+
+        // Roll the displayed number up to the new total — big capture / clear payouts
+        // feel earned when they count up instead of snapping. Only count UP; a lower
+        // value means a run reset, so snap to it. Kill any in-flight count so rapid
+        // back-to-back updates (capture + clear bonus, Bishop Echo) don't fight.
         _scoreTween?.Kill();
+        int from = _scoreShown;
+        _scoreShown = score;
+        if (score > from)
+        {
+            _scoreTween = CreateTween();
+            _scoreTween.TweenMethod(Callable.From<int>(SetScoreText), from, score, 0.35f)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        }
+        else
+        {
+            _scoreValue.Text = score.ToString();
+        }
+
+        // Scale pop (its own tween; reset first so an interrupted pop can't stick scaled).
+        _scorePopTween?.Kill();
         _scoreValue.Scale = Vector2.One;
-        _scoreTween = CreateTween();
-        _scoreTween.TweenProperty(_scoreValue, "scale", new Vector2(1.15f, 1.15f), 0.10f)
+        _scorePopTween = CreateTween();
+        _scorePopTween.TweenProperty(_scoreValue, "scale", new Vector2(1.15f, 1.15f), 0.10f)
             .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
-        _scoreTween.TweenProperty(_scoreValue, "scale", Vector2.One, 0.12f)
+        _scorePopTween.TweenProperty(_scoreValue, "scale", Vector2.One, 0.12f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+    }
+
+    private void SetScoreText(int v)
+    {
+        if (_scoreValue != null) _scoreValue.Text = v.ToString();
     }
 
     // The reserve bar reads straight from the bound RunState; the army-count
