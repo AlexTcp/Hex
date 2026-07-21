@@ -244,6 +244,18 @@ public partial class UiFlowDriver : Node
         await Shot("12-deploy");
         _board.CancelDeploy();
         if (reserve.Count > 0) reserve.RemoveAt(reserve.Count - 1);
+
+        // Settings drawer (player-facing Sound toggle + volume slider) — verify it
+        // renders, then close it via its own Resume so the flow can continue.
+        var settings = FindNode<SettingsModal>(GetTree().Root);
+        if (settings != null)
+        {
+            settings.Open();
+            await Shot("13-settings");
+            var resume = FindButton("Resume");   // drawer button (not the all-caps pause RESUME)
+            if (resume != null) resume.EmitSignal(BaseButton.SignalName.Pressed);
+            await Frames(25);                     // let the drawer slide shut
+        }
     }
 
     // Battle 1 won: shop (shot + a purchase), then with screenshots on push

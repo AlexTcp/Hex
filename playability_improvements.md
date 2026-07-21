@@ -585,9 +585,22 @@ the Round-38 volume slider), so a clean drawer→logs handoff is more relevant._
       existing close end-state without the animation); the logs path is a dev tool not driven
       by the harness, so verified by no-regression + inspection.
 
+## Round 41
+
+_Rung 4. [ui]/coverage. Closes the Round-38 gap (the volume slider was never eyeball-checked)
+and adds permanent screenshot coverage of the settings drawer._
+
+- [x] **[ui] Settings-drawer screenshot coverage** — the UI-flow driver now opens the settings
+      drawer, captures "13-settings", and closes it via its own Resume. Xvfb render CONFIRMS:
+      the drawer shows Settings / Resume / "Sound: On" / a "Volume" label + a visible HSlider
+      (grabber at max = the default 1.0) / Logs, cleanly laid out. The R38 volume slider
+      renders correctly (gap closed); the drawer now has regression coverage.
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS headless + windowed;
+      13-settings render reviewed (slider visible + correct).
+
 ---
 
-_Session note (rounds 30-40, Linux): the highest-value work is done — a rung-2 softlock, the
+_Session note (rounds 30-41, Linux): the highest-value work is done — a rung-2 softlock, the
 complete + accurate death-tile telegraph (deploy + capture protections), pooled FX so
 multi-event actions read, confirm-before-abandon, purchase/score juice, volume slider, and 5
 permanent harness guards/coverage additions. Remaining audit items are deliberately NOT taken
