@@ -593,19 +593,26 @@ public partial class HexBoard : Node3D, IBattleQuery
         for (int i = 0; i < _coordScratch.Count; i++) RefreshTileVisual(_coordScratch[i]);
     }
 
-    // Would a capture of a `kind` piece at `dest` be absorbed this battle by an
-    // unconsumed Shield tile, or — for the King — an unused Royal Guard? The
-    // single source of truth for BOTH the enemy resolver (ExecuteEnemyAction) and
-    // the death-tile telegraph (IsDeathTile), so a "safe" paint can never disagree
-    // with what actually happens when the enemy strikes.
-    private bool CaptureBlockedAt(HexCoord dest, PieceKind kind)
+    private enum CaptureBlock { None, RoyalGuard, Shield }
+
+    // WHICH protection (if any) absorbs a capture of a `kind` piece at `dest` this
+    // battle — Royal Guard (King only) takes priority over a Shield tile. The single
+    // source of truth for BOTH the enemy resolver (ExecuteEnemyAction, which consumes
+    // the returned protection) and the death-tile telegraph (IsDeathTile, via
+    // CaptureBlockedAt), so the "safe" paint and the actual strike outcome — and the
+    // priority ordering — are defined in exactly one place and cannot diverge.
+    private CaptureBlock CaptureBlockKind(HexCoord dest, PieceKind kind)
     {
-        if (_run == null) return false;
+        if (_run == null) return CaptureBlock.None;
         if (kind == PieceKind.King && _run.Has(GambitKind.RoyalGuard) && !_royalGuardUsed)
-            return true;
-        return _run.TileUpgrades.TryGetValue(dest, out var up)
-            && up == TileUpgradeKind.Shield && !_shieldConsumed.Contains(dest);
+            return CaptureBlock.RoyalGuard;
+        if (_run.TileUpgrades.TryGetValue(dest, out var up)
+            && up == TileUpgradeKind.Shield && !_shieldConsumed.Contains(dest))
+            return CaptureBlock.Shield;
+        return CaptureBlock.None;
     }
+
+    private bool CaptureBlockedAt(HexCoord dest, PieceKind kind) => CaptureBlockKind(dest, kind) != CaptureBlock.None;
 
     // Exact danger test: could any non-stunned enemy capture `dest` next turn,
     // with `piece` hypothetically relocated there? Zero-alloc (pooled scratch),
@@ -997,11 +1004,12 @@ public partial class HexBoard : Node3D, IBattleQuery
         if (capture && _occupied.TryGetValue(dest, out var victim) && victim.Side == PieceSide.Player)
         {
             // Protections absorb the capture (same predicate the telegraph paints
-            // by, so a non-red tile never dies here). The attacker's turn is spent.
-            if (CaptureBlockedAt(dest, victim.Kind))
+            // by, so a non-red tile never dies here). The attacker's turn is spent;
+            // consume exactly the protection CaptureBlockKind selected.
+            var block = CaptureBlockKind(dest, victim.Kind);
+            if (block != CaptureBlock.None)
             {
-                // Royal Guard takes priority over a Shield tile for the King.
-                if (victim.Kind == PieceKind.King && _run.Has(GambitKind.RoyalGuard) && !_royalGuardUsed)
+                if (block == CaptureBlock.RoyalGuard)
                 {
                     _royalGuardUsed = true;
                     EmitSignal(SignalName.StatusNote, "ROYAL GUARD");

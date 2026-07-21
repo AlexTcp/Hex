@@ -24,6 +24,7 @@ public static class ShopOffers
 {
     public const int QueenUnlockBattle = 6;   // no Queen offers before this battle
     public const int UpgradeRadius = 2;       // tile upgrades claim central hexes only
+    public const int RerollPrice = 2;         // cost to re-roll the shop offers
 
     // Uniform over kinds with the Queen gated early; falls back to a pawn.
     public static PieceKind RollPieceOffer(int battle, Random rng)

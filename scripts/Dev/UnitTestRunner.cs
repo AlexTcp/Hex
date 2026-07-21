@@ -330,6 +330,19 @@ public partial class UnitTestRunner : Node
         Check(stock.Army.Count == RunState.ArmyCap, "AddPiece fills to the cap");
         Check(stock.Reserve.Count == 2, "AddPiece overflows to the reserve");
 
+        // Purchases: the run owns its economy (atomic debit + effect), so the shop UI
+        // can't debit without applying or vice versa.
+        var wallet = new RunState { Money = 5 };
+        Check(wallet.TrySpend(2) && wallet.Money == 3, "TrySpend debits when affordable");
+        Check(!wallet.TrySpend(4) && wallet.Money == 3, "TrySpend refuses when unaffordable (no debit)");
+        Check(wallet.TrySpend(3) && wallet.Money == 0, "TrySpend allows spending to exactly zero");
+        Check(!wallet.TrySpend(1) && wallet.Money == 0, "TrySpend refuses at zero");
+        wallet.AddGambit(GambitKind.RoyalGuard);
+        Check(wallet.Has(GambitKind.RoyalGuard), "AddGambit records the gambit");
+        wallet.SetTileUpgrade(HexCoord.Zero, TileUpgradeKind.Shield);
+        Check(wallet.TileUpgrades.TryGetValue(HexCoord.Zero, out var up) && up == TileUpgradeKind.Shield,
+            "SetTileUpgrade records the upgrade");
+
         Check(Scoring.CaptureScore(PieceKind.Queen) == 600, "queen capture score");
         Check(Scoring.ClearScore(3) == 750, "clear score");
         Check(Scoring.ClearPay(5, false) == 9, "clear pay");

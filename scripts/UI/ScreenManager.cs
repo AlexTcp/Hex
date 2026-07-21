@@ -72,7 +72,7 @@ public partial class ScreenManager : Node
         _root.Theme = UiTheme.Build();
 
         BuildOverlays();
-        WireBoard();
+        WireBoard(true);
 
         DebugLog.GameplayActiveChanged += OnDebugModalToggled;
 
@@ -87,20 +87,7 @@ public partial class ScreenManager : Node
         _tutorialTween?.Kill();
         foreach (var t in _transitionTweens) t?.Kill();
         _transitionTweens.Clear();
-        if (_board != null)
-        {
-            _board.MoneyChanged -= OnMoneyChanged;
-            _board.ScoreChanged -= OnScoreChanged;
-            _board.EnemiesChanged -= OnEnemiesChanged;
-            _board.ArmyChanged -= OnArmyChanged;
-            _board.CrumbleChanged -= OnCrumbleChanged;
-            _board.ThreatChanged -= OnThreatChanged;
-            _board.StatusNote -= OnStatusNote;
-            _board.InspectChanged -= OnInspectChanged;
-            _board.DeployModeChanged -= OnDeployModeChanged;
-            _board.BattleWon -= OnBattleWon;
-            _board.BattleLost -= OnBattleLost;
-        }
+        WireBoard(false);
     }
 
     // ----- Build ---------------------------------------------------------
@@ -141,19 +128,24 @@ public partial class ScreenManager : Node
         _root.AddChild(c);
     }
 
-    private void WireBoard()
+    // Connect (true) or disconnect (false) every board signal. Each event is named
+    // exactly ONCE (with an inline branch) so the subscribe and unsubscribe sets can
+    // never fall out of sync — a forgotten -= would leak the handler and keep this
+    // dead ScreenManager reachable, because the board node never unloads (hard rule 4).
+    private void WireBoard(bool connect)
     {
-        _board.MoneyChanged += OnMoneyChanged;
-        _board.ScoreChanged += OnScoreChanged;
-        _board.EnemiesChanged += OnEnemiesChanged;
-        _board.ArmyChanged += OnArmyChanged;
-        _board.CrumbleChanged += OnCrumbleChanged;
-        _board.ThreatChanged += OnThreatChanged;
-        _board.StatusNote += OnStatusNote;
-        _board.InspectChanged += OnInspectChanged;
-        _board.DeployModeChanged += OnDeployModeChanged;
-        _board.BattleWon += OnBattleWon;
-        _board.BattleLost += OnBattleLost;
+        if (_board == null) return;
+        if (connect) _board.MoneyChanged += OnMoneyChanged; else _board.MoneyChanged -= OnMoneyChanged;
+        if (connect) _board.ScoreChanged += OnScoreChanged; else _board.ScoreChanged -= OnScoreChanged;
+        if (connect) _board.EnemiesChanged += OnEnemiesChanged; else _board.EnemiesChanged -= OnEnemiesChanged;
+        if (connect) _board.ArmyChanged += OnArmyChanged; else _board.ArmyChanged -= OnArmyChanged;
+        if (connect) _board.CrumbleChanged += OnCrumbleChanged; else _board.CrumbleChanged -= OnCrumbleChanged;
+        if (connect) _board.ThreatChanged += OnThreatChanged; else _board.ThreatChanged -= OnThreatChanged;
+        if (connect) _board.StatusNote += OnStatusNote; else _board.StatusNote -= OnStatusNote;
+        if (connect) _board.InspectChanged += OnInspectChanged; else _board.InspectChanged -= OnInspectChanged;
+        if (connect) _board.DeployModeChanged += OnDeployModeChanged; else _board.DeployModeChanged -= OnDeployModeChanged;
+        if (connect) _board.BattleWon += OnBattleWon; else _board.BattleWon -= OnBattleWon;
+        if (connect) _board.BattleLost += OnBattleLost; else _board.BattleLost -= OnBattleLost;
     }
 
     // ----- Board signal handlers -----------------------------------------

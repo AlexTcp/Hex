@@ -25,7 +25,7 @@ namespace HexGame.UI;
 
 public partial class ShopScreen : Control
 {
-    private const int RerollPrice = 2;
+    private const int RerollPrice = ShopOffers.RerollPrice;   // shop SSOT — never an independent copy
 
     private readonly Action _onContinue;
     private readonly Action<HexCoord?> _onPreviewTile;   // mark the offer's tile on the board
@@ -126,8 +126,7 @@ public partial class ShopScreen : Control
 
     private void OnReroll()
     {
-        if (_run == null || _run.Money < RerollPrice) return;
-        _run.Money -= RerollPrice;
+        if (_run == null || !_run.TrySpend(RerollPrice)) return;
         BuildOffers();
         RefreshMoney();
     }
@@ -183,7 +182,7 @@ public partial class ShopScreen : Control
         if (gambit.HasValue)
         {
             var g = gambit.Value;
-            AddOffer("GAMBIT", g.Name, g.Description, g.Price, () => _run.Gambits.Add(g.Kind));
+            AddOffer("GAMBIT", g.Name, g.Description, g.Price, () => _run.AddGambit(g.Kind));
         }
 
         // One tile upgrade, assigned a random un-upgraded coord near the centre.
@@ -196,7 +195,7 @@ public partial class ShopScreen : Control
         {
             var c = coord.Value;
             AddOffer("TILE", up.Name, up.Description, up.Price,
-                () => _run.TileUpgrades[c] = up.Kind,
+                () => _run.SetTileUpgrade(c, up.Kind),
                 extra: new HexMapDiagram(c));
         }
     }
@@ -280,8 +279,7 @@ public partial class ShopScreen : Control
         buy.CustomMinimumSize = new Vector2(0, 64);
         buy.Pressed += () =>
         {
-            if (_run.Money < price || buy.Disabled) return;
-            _run.Money -= price;
+            if (buy.Disabled || !_run.TrySpend(price)) return;
             apply();
             Sfx.Play(SfxCue.Coin);   // ka-ching on a real purchase (over the tap tick)
             buy.Text = "SOLD";

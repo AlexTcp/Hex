@@ -161,7 +161,7 @@ public partial class AutoPlayDriver : Node
     // player: grow the army first, spend leftovers on gambits/tiles.
     private void SimulateShop(RunState run)
     {
-        const int rerollPrice = 2;
+        const int rerollPrice = ShopOffers.RerollPrice;   // shop SSOT (see ShopOffers)
         for (int visit = 0; visit < 4; visit++)
         {
             for (int i = 0; i < 2; i++)

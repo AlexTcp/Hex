@@ -50,6 +50,20 @@ public sealed class RunState
         else Reserve.Add(kind);
     }
 
+    // ----- Purchases: the run owns its own economy mutations so a shop debit and
+    // its effect are one atomic, testable step (the UI only gates + presents).
+
+    // Debit `amount` iff affordable; returns whether the purchase went through.
+    public bool TrySpend(int amount)
+    {
+        if (Money < amount) return false;
+        Money -= amount;
+        return true;
+    }
+
+    public void AddGambit(GambitKind kind) => Gambits.Add(kind);
+    public void SetTileUpgrade(HexCoord coord, TileUpgradeKind kind) => TileUpgrades[coord] = kind;
+
     public static bool IsBossBattle(int battle) => battle % 4 == 0;
 
     // Starter pool: everything but the Queen (she's a late-run shop prize).
