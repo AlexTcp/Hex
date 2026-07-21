@@ -19,3 +19,4 @@
 - Round 36 [fairness]: the death-tile (red) warning no longer marks tiles you've protected as lethal — a Shield tile or Royal Guard (for the King) now correctly reads as safe, since the enemy's single next capture there is blocked. Resolution and telegraph now share one predicate so they can't disagree.
 - Round 37 [feel]: the HUD score now counts up to big capture/clear payouts instead of snapping, so the reward reads.
 - Round 38 [qol]: added a master volume slider to the settings drawer (persisted), alongside the existing sound on/off. Also fixed a latent settings-save bug where writing one audio setting would drop the other.
+- Round 39: removed a dangling CharacterSelect.cs.uid sidecar left over from an old refactor (repo hygiene; no gameplay effect).

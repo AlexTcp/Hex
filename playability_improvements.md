@@ -562,3 +562,11 @@ polish (esp. desktop, which has no per-app volume)._
       No-clobber save is correct by construction (both keys written together). The HSlider is
       a standard control, functionally verified; its rendered look not eyeball-checked
       (opening the DebugLog-owned drawer in the harness would need extra API surface).
+
+## Round 39
+
+- [x] **[qol] Remove orphan `CharacterSelect.cs.uid`** — the script was deleted in the
+      Tokens→battle-pieces rebuild (commit 191d1b6) but its `.cs.uid` sidecar stayed tracked,
+      dangling to a nonexistent resource. Confirmed its UID (`cltxgi8xk4mpq`) is referenced
+      nowhere, then `git rm -f` (the stat-cache false-positive that blocked a plain `git rm`
+      in Round 33 needed the force). Build clean; headless boot clean (no UID/import warnings).
