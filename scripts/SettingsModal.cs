@@ -102,6 +102,23 @@ public partial class SettingsModal : Control
         };
         content.AddChild(soundBtn);
 
+        var volLabel = new Label { Text = "Volume" };
+        volLabel.AddThemeFontSizeOverride("font_size", 16);
+        volLabel.AddThemeColorOverride("font_color", new Color(0.80f, 0.82f, 0.88f));
+        content.AddChild(volLabel);
+
+        var volSlider = new HSlider
+        {
+            MinValue = 0.0,
+            MaxValue = 1.0,
+            Step = 0.05,
+            Value = Sfx.Volume,
+            CustomMinimumSize = new Vector2(0, 28),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        volSlider.ValueChanged += v => Sfx.SetVolume((float)v);
+        content.AddChild(volSlider);
+
         var logsBtn = MakeDrawerButton("Logs");
         logsBtn.Pressed += OnLogsPressed;
         content.AddChild(logsBtn);

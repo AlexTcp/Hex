@@ -543,3 +543,22 @@ A recommended juice recipe not yet present._
       with the +$N pop + spark) and the end screen's own score correct. Final value is
       guaranteed by construction (TweenMethod ends at `to`) and run.Score stays the separate
       authoritative record — the count-up is display-only, so no data/record risk.
+
+## Round 38
+
+_Rung 4 continues. [qol] (variety OK: last tagged rounds fairness R36, [feel] R37). QoL-pack
+item: the game had only a binary Sound On/Off — a master volume is standard finished-game
+polish (esp. desktop, which has no per-app volume)._
+
+- [x] **[qol] Master volume slider** (finished-game polish) — `Sfx` gained a persisted
+      master `Volume` (0..1) applied via the Master audio bus (scales every cue + the
+      ambient/threat loops uniformly), independent of the on/off toggle. Added an HSlider to
+      the settings drawer. Fixed a latent bug while here: `SetEnabled` wrote a fresh
+      ConfigFile with only `sound_enabled`, so adding a second key would clobber the first —
+      both now persist together via one `SaveSettings`, and `_Ready` loads both + applies.
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS (game boots → ApplyVolume
+      runs headless-safe, no crash); persistence probe: booted with a custom `volume=0.4`
+      settings.cfg → clean boot, file intact (load path + Master-bus apply verified).
+      No-clobber save is correct by construction (both keys written together). The HSlider is
+      a standard control, functionally verified; its rendered look not eyeball-checked
+      (opening the DebugLog-owned drawer in the harness would need extra API surface).

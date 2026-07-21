@@ -39,6 +39,7 @@ public partial class Sfx : Node
     private int _next;
 
     public static bool Enabled { get; private set; } = true;
+    public static float Volume { get; private set; } = 1f;   // master level (0..1)
 
     private static readonly int CueCount = Enum.GetValues<SfxCue>().Length;
 
@@ -77,7 +78,11 @@ public partial class Sfx : Node
 
         var cfg = new ConfigFile();
         if (cfg.Load(SettingsPath) == Error.Ok)
+        {
             Enabled = (bool)cfg.GetValue(Section, "sound_enabled", true);
+            Volume = Mathf.Clamp((float)(double)cfg.GetValue(Section, "volume", 1.0), 0f, 1f);
+        }
+        ApplyVolume();
 
         // Quiet seamless room pad under everything (loop is sample-exact).
         _ambient = MakeLoopingPlayer("res://audio/ambient.wav", -16f);
@@ -109,12 +114,35 @@ public partial class Sfx : Node
         else if (!on) inst._threat.Stop();
     }
 
+    // Master level (0..1) applied via the Master bus, so it scales every cue and
+    // the ambient/threat loops uniformly. Independent of the on/off toggle.
+    public static void SetVolume(float volume)
+    {
+        Volume = Mathf.Clamp(volume, 0f, 1f);
+        ApplyVolume();
+        SaveSettings();
+    }
+
+    private static void ApplyVolume()
+    {
+        // Master bus (index 0); near-zero maps to effectively silent.
+        AudioServer.SetBusVolumeDb(0, Volume <= 0.001f ? -60f : Mathf.LinearToDb(Volume));
+    }
+
+    // Persist BOTH audio settings together — writing one key on a fresh ConfigFile
+    // would drop the other (settings.cfg is rewritten whole).
+    private static void SaveSettings()
+    {
+        var cfg = new ConfigFile();
+        cfg.SetValue(Section, "sound_enabled", Enabled);
+        cfg.SetValue(Section, "volume", Volume);
+        cfg.Save(SettingsPath);
+    }
+
     public static void SetEnabled(bool enabled)
     {
         Enabled = enabled;
-        var cfg = new ConfigFile();
-        cfg.SetValue(Section, "sound_enabled", enabled);
-        cfg.Save(SettingsPath);
+        SaveSettings();
 
         var inst = _instance;
         if (inst == null) return;
