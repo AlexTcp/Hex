@@ -24,6 +24,8 @@ public partial class PauseOverlay : Control
     private readonly Action _onAbandon;
     private Label _stats;
     private Label _gambits;
+    private Control _actionRow;
+    private Control _confirmRow;
 
     public PauseOverlay(Action onResume, Action onAbandon)
     {
@@ -65,17 +67,59 @@ public partial class PauseOverlay : Control
         v.AddChild(_gambits);
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
 
+        // Normal actions: resume, or begin abandoning (which asks to confirm first —
+        // ABANDON sits directly under RESUME, so a single mis-tap must not discard a
+        // whole run without a chance to back out).
+        var actions = new VBoxContainer();
+        actions.AddThemeConstantOverride("separation", 18);
+        _actionRow = actions;
+        v.AddChild(actions);
+
         var resume = UiTheme.PrimaryButton("RESUME");
         resume.Pressed += () => _onResume?.Invoke();
-        v.AddChild(resume);
+        actions.AddChild(resume);
 
         var quit = UiTheme.DangerButton("ABANDON RUN");
-        quit.Pressed += () => _onAbandon?.Invoke();
-        v.AddChild(quit);
+        quit.Pressed += ShowConfirm;
+        actions.AddChild(quit);
+
+        // Confirmation: only YES commits the abandon; CANCEL returns to the menu.
+        var confirm = new VBoxContainer { Visible = false };
+        confirm.AddThemeConstantOverride("separation", 12);
+        _confirmRow = confirm;
+        v.AddChild(confirm);
+
+        var warn = UiTheme.MakeLabel("Abandon this run? Your progress is lost.",
+            UiTheme.BodySmallSize, UiTheme.Danger, HorizontalAlignment.Center);
+        warn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        warn.CustomMinimumSize = new Vector2(400, 0);
+        confirm.AddChild(warn);
+
+        var yes = UiTheme.DangerButton("YES, ABANDON");
+        yes.Pressed += () => _onAbandon?.Invoke();
+        confirm.AddChild(yes);
+
+        var cancel = UiTheme.PrimaryButton("KEEP PLAYING");
+        cancel.Pressed += HideConfirm;
+        confirm.AddChild(cancel);
+    }
+
+    // Two-step abandon: swap the resume/abandon row for a yes/cancel confirmation.
+    private void ShowConfirm()
+    {
+        if (_actionRow != null) _actionRow.Visible = false;
+        if (_confirmRow != null) _confirmRow.Visible = true;
+    }
+
+    private void HideConfirm()
+    {
+        if (_confirmRow != null) _confirmRow.Visible = false;
+        if (_actionRow != null) _actionRow.Visible = true;
     }
 
     public void Refresh(RunState run)
     {
+        HideConfirm();   // always reopen on the normal menu, never a stale confirm
         if (_stats != null) _stats.Text = $"Battle {run?.Battle ?? 1}    Score {run?.Score ?? 0}";
         if (_gambits == null) return;
         if (run == null || run.Gambits.Count == 0)

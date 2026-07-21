@@ -442,3 +442,22 @@ existing system rather than adding new mechanics._
       scoring unchanged and deploying with the new check never crashed); UI-flow PASS
       (shop still builds/buys). Deploy red-paint is a direct mirror of the verified
       move-selection path; exact render not eyeball-confirmed (headless).
+
+## Round 33
+
+_Rung 4 continues. [qol] (variety: last tagged rounds were [feel] R31, [ui] R32). From the
+QoL pack: confirm-before-quit mid-game — the one clearly-destructive action in-run had no
+guard._
+
+- [x] **[qol] Confirm before abandoning a run** (pillar 3 — protects run progress) —
+      `PauseOverlay` ABANDON RUN sits directly below RESUME and fired immediately, so a
+      single mis-tap discarded the whole run. It now swaps to a two-step confirm
+      ("Abandon this run? Your progress is lost." → YES, ABANDON / KEEP PLAYING); only YES
+      commits. `Refresh` resets to the normal menu each time pause reopens so no stale
+      confirm lingers. UI-flow driver updated to drive + guard the new step.
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS ("abandon confirm shown ok"
+      then "abandon → title ok"). Proven red→green: with the confirm removed, uiflow
+      exits 1 ("abandon skipped its confirmation"); restored, PASS.
+- [ ] (dropped this round) remove orphan `CharacterSelect.cs.uid` — `git rm` hit the
+      mount's stat-cache false-positive and would need `-f`; trivial value, not worth the
+      friction. Left for a later round.

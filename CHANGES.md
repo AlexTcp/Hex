@@ -11,3 +11,4 @@
 - Round 31 [feel]: the HUD score pop no longer stacks overlapping scale tweens on multi-score actions (kills the prior pop and resets first).
 - Round 32 [ui]: deploy mode now paints death tiles red — a reserve piece dropped into an enemy's capture range gets the same warning a normal move does (previously deploy tiles were all safe-gold).
 - Round 32 [ui]: shop piece cards read "PIECE → RESERVE" when the army is at its cap, so it's clear a purchase will overflow to the reserve.
+- Round 33 [qol]: abandoning a run from the pause menu now asks for confirmation ("Abandon this run?") so a mis-tap on ABANDON (right under RESUME) can't discard a whole run.

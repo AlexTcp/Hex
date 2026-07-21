@@ -251,11 +251,18 @@ public partial class UiFlowDriver : Node
 
         if (_shotDir != null && !await PhaseBoardStateShots()) return false;
 
-        // Pause → abandon → back to Title (if still in a battle).
+        // Pause → abandon (confirm) → back to Title (if still in a battle).
         if (FindButton("II") != null)
         {
             if (!await PressButton("II")) return false;
             if (!await PressButton("ABANDON RUN")) return false;
+            // Confirm-before-abandon guard (round 33): ABANDON must NOT drop the run
+            // straight to Title — it must ask first. If the confirm regresses, PLAY
+            // appears here and YES, ABANDON is missing.
+            if (FindButton("PLAY") != null) { Fail("abandon skipped its confirmation"); return false; }
+            if (await ExpectButton("YES, ABANDON") == null) return false;
+            GD.Print("[UIFLOW] abandon confirm shown ok");
+            if (!await PressButton("YES, ABANDON")) return false;
         }
         if (await ExpectButton("PLAY") == null) return false;
         GD.Print("[UIFLOW] abandon → title ok");
