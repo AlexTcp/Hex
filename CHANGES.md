@@ -22,3 +22,4 @@
 - Round 39: removed a dangling CharacterSelect.cs.uid sidecar left over from an old refactor (repo hygiene; no gameplay effect).
 - Round 40 [ui]: opening the log viewer from the settings drawer no longer flashes the closing drawer over it / eats its first input (the drawer now closes instantly for that handoff).
 - Round 41: added settings-drawer screenshot coverage to the UI-flow harness (confirms the volume slider renders); no gameplay change.
+- Round 42 [feel]: added haptic feedback (mobile) to the big moments — battle win/loss, boss entrance, ring collapse, and losing a piece (timed with the strike).

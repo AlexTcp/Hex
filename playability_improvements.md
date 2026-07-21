@@ -598,9 +598,23 @@ and adds permanent screenshot coverage of the settings drawer._
 - [x] **Verified** — build clean; 955 unit checks; UI-flow PASS headless + windowed;
       13-settings render reviewed (slider visible + correct).
 
+## Round 42
+
+_Rung 4. [feel] (variety OK: last tagged rounds [ui] R40, [ui] R41). Mobile tactile gap._
+
+- [x] **[feel] Haptics on the big moments** (pillar 1 premium tactile, mobile target) —
+      haptics fired only on select/deselect/deploy/move/own-capture; the game's most tactile
+      beats had none. Added `Haptics.Tap` on: battle win (60ms), battle loss (90ms, heavier),
+      boss entrance (30ms), crumble collapse (50ms), and — riding the delayed strike FX so it
+      lands with the visual — losing a player piece (40ms, gated to player pieces so a player
+      capture never double-buzzes). Haptics is a safe no-op off-device.
+- [x] **Verified** — build clean; 955 unit checks; 80-run autoplay 0 failures / exit 0 /
+      orphans=0 (all new haptic call sites — capture/win/loss/crumble — run without crash);
+      UI-flow PASS. Effect is device-only (headless no-op), so verified by no-regression.
+
 ---
 
-_Session note (rounds 30-41, Linux): the highest-value work is done — a rung-2 softlock, the
+_Session note (rounds 30-42, Linux): the highest-value work is done — a rung-2 softlock, the
 complete + accurate death-tile telegraph (deploy + capture protections), pooled FX so
 multi-event actions read, confirm-before-abandon, purchase/score juice, volume slider, and 5
 permanent harness guards/coverage additions. Remaining audit items are deliberately NOT taken

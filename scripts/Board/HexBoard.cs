@@ -251,6 +251,7 @@ public partial class HexBoard : Node3D, IBattleQuery
             EmitSignal(SignalName.StatusNote,
                 $"{BossCatalog.NameOf(_boss).ToUpperInvariant()}: {BossCatalog.EffectOf(_boss).ToUpperInvariant()}");
             Sfx.Play(SfxCue.Boss);
+            Haptics.Tap(30);   // the boss takes the field
         }
         else
         {
@@ -1062,6 +1063,11 @@ public partial class HexBoard : Node3D, IBattleQuery
         {
             var tween = CreateTween();
             if (fxDelay > 0f) tween.TweenInterval(fxDelay);
+            // Feel the strike land when a PLAYER piece dies (rides the delayed FX so
+            // it hits with the visual). Enemy deaths already buzz on the player's own
+            // capturing action, so this never double-buzzes a player capture.
+            if (piece.Side == PieceSide.Player)
+                tween.TweenCallback(Callable.From(() => Haptics.Tap(40)));
             tween.TweenProperty(node, "scale", Vector3.Zero, 0.13f)
                 .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
             tween.TweenCallback(Callable.From(() =>
@@ -1144,6 +1150,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _stateStamp++;
         _cacheStamp = -1;
         Sfx.Play(SfxCue.Collapse);
+        Haptics.Tap(50);   // the ring falls away
         RefreshAllTileVisuals();
         SetThreat(false);
         EmitSignal(SignalName.EnemiesChanged, CountSide(PieceSide.Enemy));
@@ -1192,6 +1199,7 @@ public partial class HexBoard : Node3D, IBattleQuery
 
         SetThreat(false);
         Sfx.Play(SfxCue.Win);
+        Haptics.Tap(60);   // battle cleared
         EmitSignal(SignalName.BattleWon);
     }
 
@@ -1201,6 +1209,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         EndSelect();
         SetThreat(false);
         Sfx.Play(SfxCue.Lose);
+        Haptics.Tap(90);   // heavier buzz for defeat
         EmitSignal(SignalName.BattleLost);
     }
 
