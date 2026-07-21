@@ -592,19 +592,38 @@ public partial class HexBoard : Node3D, IBattleQuery
         for (int i = 0; i < _coordScratch.Count; i++) RefreshTileVisual(_coordScratch[i]);
     }
 
+    // Would a capture of a `kind` piece at `dest` be absorbed this battle by an
+    // unconsumed Shield tile, or — for the King — an unused Royal Guard? The
+    // single source of truth for BOTH the enemy resolver (ExecuteEnemyAction) and
+    // the death-tile telegraph (IsDeathTile), so a "safe" paint can never disagree
+    // with what actually happens when the enemy strikes.
+    private bool CaptureBlockedAt(HexCoord dest, PieceKind kind)
+    {
+        if (_run == null) return false;
+        if (kind == PieceKind.King && _run.Has(GambitKind.RoyalGuard) && !_royalGuardUsed)
+            return true;
+        return _run.TileUpgrades.TryGetValue(dest, out var up)
+            && up == TileUpgradeKind.Shield && !_shieldConsumed.Contains(dest);
+    }
+
     // Exact danger test: could any non-stunned enemy capture `dest` next turn,
     // with `piece` hypothetically relocated there? Zero-alloc (pooled scratch),
     // no RNG — the AI always takes an available capture.
-    private bool IsDeathTile(BattlePiece piece, HexCoord dest) => IsDeathTileHypo(piece.Coord, dest);
+    private bool IsDeathTile(BattlePiece piece, HexCoord dest) => IsDeathTileHypo(piece.Coord, dest, piece.Kind);
 
-    // Deploy variant: a fresh player piece appears AT `dest` and no tile is
+    // Deploy variant: a fresh piece of `kind` appears AT `dest` and no tile is
     // vacated (deploying opens no enemy line-of-attack), so the hypothetical
     // origin is the destination itself — OccupantSide then reports `dest` as
     // player-held and every other tile at its true occupancy.
-    private bool IsDeployDeathTile(HexCoord dest) => IsDeathTileHypo(dest, dest);
+    private bool IsDeployDeathTile(HexCoord dest, PieceKind kind) => IsDeathTileHypo(dest, dest, kind);
 
-    private bool IsDeathTileHypo(HexCoord from, HexCoord dest)
+    private bool IsDeathTileHypo(HexCoord from, HexCoord dest, PieceKind kind)
     {
+        // Exactly one enemy captures per turn, and a blocked capture spends that
+        // turn (the piece survives) — so a protected tile is genuinely safe next
+        // turn regardless of how many enemies could reach it.
+        if (CaptureBlockedAt(dest, kind)) return false;
+
         _hypoFrom = from;
         _hypoTo = dest;
         _hypoActive = true;
@@ -635,6 +654,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         EndSelect();
         CancelDeploy();
         _deployIndex = reserveIndex;
+        var deployKind = _run.Reserve[reserveIndex];
 
         int found = 0;
         for (int pass = 0; pass < 2 && found == 0; pass++)
@@ -652,7 +672,7 @@ public partial class HexBoard : Node3D, IBattleQuery
                 if (_tiles.TryGetValue(c, out var tile))
                     // Same fairness cue as move selection: a deploy tile an enemy
                     // could capture next turn pulses danger-red, not safe-gold.
-                    tile.Mesh.MaterialOverride = IsDeployDeathTile(c)
+                    tile.Mesh.MaterialOverride = IsDeployDeathTile(c, deployKind)
                         ? DangerHighlightMaterialShared
                         : HighlightMaterialShared;
                 found++;
@@ -975,19 +995,21 @@ public partial class HexBoard : Node3D, IBattleQuery
     {
         if (capture && _occupied.TryGetValue(dest, out var victim) && victim.Side == PieceSide.Player)
         {
-            // Royal Guard: the first attempt on your King each battle is blocked.
-            if (victim.Kind == PieceKind.King && _run.Has(GambitKind.RoyalGuard) && !_royalGuardUsed)
+            // Protections absorb the capture (same predicate the telegraph paints
+            // by, so a non-red tile never dies here). The attacker's turn is spent.
+            if (CaptureBlockedAt(dest, victim.Kind))
             {
-                _royalGuardUsed = true;
-                EmitSignal(SignalName.StatusNote, "ROYAL GUARD");
-                return;                                // attacker's turn is spent
-            }
-            // Shield tile: the first friendly piece on it ignores one capture.
-            if (_run.TileUpgrades.TryGetValue(dest, out var up) && up == TileUpgradeKind.Shield
-                && !_shieldConsumed.Contains(dest))
-            {
-                _shieldConsumed.Add(dest);
-                EmitSignal(SignalName.StatusNote, "SHIELDED");
+                // Royal Guard takes priority over a Shield tile for the King.
+                if (victim.Kind == PieceKind.King && _run.Has(GambitKind.RoyalGuard) && !_royalGuardUsed)
+                {
+                    _royalGuardUsed = true;
+                    EmitSignal(SignalName.StatusNote, "ROYAL GUARD");
+                }
+                else
+                {
+                    _shieldConsumed.Add(dest);
+                    EmitSignal(SignalName.StatusNote, "SHIELDED");
+                }
                 return;
             }
 

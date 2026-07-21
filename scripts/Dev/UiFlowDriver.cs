@@ -97,6 +97,7 @@ public partial class UiFlowDriver : Node
 
         if (!await BootGame()) return;
         if (!await PhaseTitleToFirstBattle()) return;
+        PhaseProtectionChecks();
         await PhaseInspectionShots();
 
         // Play battle 1 to completion via the shared bot, then branch.
@@ -156,6 +157,32 @@ public partial class UiFlowDriver : Node
         await Shot("03-pause");
         if (!await PressButton("RESUME")) return false;
         return await ExpectButton("II") != null;
+    }
+
+    // Round 36: verify the death-tile telegraph honours the capture protections
+    // (Royal Guard for the King, Shield tiles for anyone) so the resolver and the
+    // red paint agree. Mutates + restores the live run, leaving it untouched.
+    private void PhaseProtectionChecks()
+    {
+        var run = _session.CurrentRun;
+        HexCoord c = default;
+        foreach (var p in _board.DebugPieces)
+            if (p.Alive && p.Side == PieceSide.Player) { c = p.Coord; break; }
+
+        // Royal Guard: blocks a King capture only while owned + unused.
+        if (_board.DebugCaptureBlockedAt(c, PieceKind.King)) Fail("RG block active before owning Royal Guard");
+        run.Gambits.Add(GambitKind.RoyalGuard);
+        if (!_board.DebugCaptureBlockedAt(c, PieceKind.King)) Fail("Royal Guard did not block a King capture");
+        if (_board.DebugCaptureBlockedAt(c, PieceKind.Pawn)) Fail("Royal Guard wrongly blocked a non-King");
+        run.Gambits.Remove(GambitKind.RoyalGuard);
+
+        // Shield tile: blocks any friendly piece while the tile has an unconsumed Shield.
+        if (_board.DebugCaptureBlockedAt(c, PieceKind.Pawn)) Fail("shield block active on an un-upgraded tile");
+        run.TileUpgrades[c] = TileUpgradeKind.Shield;
+        if (!_board.DebugCaptureBlockedAt(c, PieceKind.Pawn)) Fail("Shield tile did not block a capture");
+        run.TileUpgrades.Remove(c);
+
+        if (_fails == 0) GD.Print("[UIFLOW] protection death-tile predicate ok");
     }
 
     // Screenshot a selection (highlights + inspection chip) and an enemy-reach

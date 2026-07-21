@@ -505,3 +505,24 @@ _Rung 4 continues. [ui] (variety OK: last tagged rounds [qol] R33, [audio]+[feel
       can't threaten the southern home tiles next turn, which is exactly right; the red
       death-paint uses the same DangerHighlightMaterialShared path already confirmed in
       04-selection). Shop-label autowrap is an obviously-correct property flip.
+
+## Round 36
+
+_Rung 3 (fairness/clarity: the telegraph misrepresented game state). The death-tile red
+was a false LIE on protected tiles — discouraging safe moves the player paid to protect.
+(Borderline rung-3/4; treated as rung-3 since a misleading telegraph is a clarity defect.)_
+
+- [x] **[fairness] Death-tile telegraph honours capture protections** (pillar 2 + pillar 3
+      upgrade value) — `IsDeathTile` marked a tile red if ANY enemy could capture it, ignoring
+      Shield tiles and Royal Guard. But exactly one enemy acts per turn and a blocked capture
+      SPENDS that turn (piece survives), so a protected tile is genuinely safe next turn.
+      Extracted `CaptureBlockedAt(dest, kind)` — an unconsumed Shield tile, or Royal Guard for
+      the King — as the SINGLE SOURCE OF TRUTH used by BOTH `ExecuteEnemyAction` (resolution,
+      refactored to gate on it, behaviour-identical) and `IsDeathTile`/`IsDeployDeathTile`
+      (telegraph), so the red paint can never disagree with what actually happens. Threaded the
+      piece kind through the danger check (needed for the King-only Royal Guard).
+- [x] **Verified** — build clean; 955 unit checks; 100-run autoplay 24 wins / 0 failures /
+      exit 0 / orphans=0 (refactored block path + changed danger scoring stable, no crash);
+      new `PhaseProtectionChecks` in the UI-flow driver deterministically asserts the predicate
+      (RG blocks King only when owned+unused; Shield blocks any piece on an upgraded tile) —
+      proven red→green (neutering CaptureBlockedAt fails uiflow with the exact block assertions).

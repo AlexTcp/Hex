@@ -16,3 +16,4 @@
 - Round 34 [feel]: the menu camera drift no longer fights a lingering defeat shake when returning from the Game Over screen quickly.
 - Round 35 [ui]: the shop's money/army/reserve line now wraps instead of overrunning the screen when the army and reserve are large.
 - Round 35 [ui]: added deploy-mode screenshot coverage to the UI-flow harness (verifies the deploy death-tile telegraph renders).
+- Round 36 [fairness]: the death-tile (red) warning no longer marks tiles you've protected as lethal — a Shield tile or Royal Guard (for the King) now correctly reads as safe, since the enemy's single next capture there is blocked. Resolution and telegraph now share one predicate so they can't disagree.
