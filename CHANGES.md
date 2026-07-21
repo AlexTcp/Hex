@@ -12,3 +12,5 @@
 - Round 32 [ui]: deploy mode now paints death tiles red — a reserve piece dropped into an enemy's capture range gets the same warning a normal move does (previously deploy tiles were all safe-gold).
 - Round 32 [ui]: shop piece cards read "PIECE → RESERVE" when the army is at its cap, so it's clear a purchase will overflow to the reserve.
 - Round 33 [qol]: abandoning a run from the pause menu now asks for confirmation ("Abandon this run?") so a mis-tap on ABANDON (right under RESUME) can't discard a whole run.
+- Round 34 [audio]: a successful shop purchase now plays a coin "ka-ching" over the tap tick, so buying feels rewarding and distinct from an unaffordable tap.
+- Round 34 [feel]: the menu camera drift no longer fights a lingering defeat shake when returning from the Game Over screen quickly.

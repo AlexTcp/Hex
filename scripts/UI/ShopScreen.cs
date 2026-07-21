@@ -280,6 +280,7 @@ public partial class ShopScreen : Control
             if (_run.Money < price || buy.Disabled) return;
             _run.Money -= price;
             apply();
+            Sfx.Play(SfxCue.Coin);   // ka-ching on a real purchase (over the tap tick)
             buy.Text = "SOLD";
             buy.Disabled = true;
             RefreshMoney();

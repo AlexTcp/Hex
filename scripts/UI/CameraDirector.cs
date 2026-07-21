@@ -34,6 +34,7 @@ public sealed class CameraDirector
     public void Drift()
     {
         _driftTween?.Kill();
+        _shakeTween?.Kill();   // a menu drift supersedes any residual defeat shake
         var origin = _rest.Origin;
         _driftTween = _camera.CreateTween().SetLoops();
         _driftTween.TweenProperty(_camera, "position", origin + new Vector3(0.35f, 0f, 0.2f), 7.0f)

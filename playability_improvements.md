@@ -461,3 +461,21 @@ guard._
 - [ ] (dropped this round) remove orphan `CharacterSelect.cs.uid` — `git rm` hit the
       mount's stat-cache false-positive and would need `-f`; trivial value, not worth the
       friction. Left for a later round.
+
+## Round 34
+
+_Rung 4 continues. [audio] + [feel] (variety: last tagged rounds [ui] R32, [qol] R33)._
+
+- [x] **[audio] Purchase confirmation sound** (pillar 3 economy + pillar 1 feel) — every
+      button already ticks (SfxCue.Select on press), but a *successful* shop purchase had
+      no distinct payoff. `ShopScreen` now plays SfxCue.Coin on a completed buy (after the
+      affordability check), layering a "ka-ching" over the tap tick so a real purchase
+      feels rewarding and distinct from an unaffordable tap.
+- [x] **[feel] Camera drift no longer fights a residual defeat shake** (pillar 1 clean
+      choreography) — `CameraDirector.Restore()` killed the shake tween but `Drift()` did
+      not, so navigating from the Game Over screen back to Title/New Run within the ~0.36s
+      shake could run drift and shake on `camera.position` at once. `Drift()` now kills the
+      shake tween first.
+- [x] **Verified** — build clean (0 warnings); 955 unit checks; UI-flow PASS (buy path runs
+      the new coin call; defeat→title drift path exercised). Audio is a safe headless no-op;
+      the coin cue was already validated in prior rounds — this only adds a call site.
