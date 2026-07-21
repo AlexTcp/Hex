@@ -82,6 +82,27 @@ public static class EnemyPlanner
         return false;
     }
 
+    // Would any non-stunned enemy (other than one already standing on `dest`) be able
+    // to capture `dest` next turn, given `board`'s current occupancy? This is the
+    // death-tile fairness invariant: the telegraph paints a tile red iff this is true,
+    // and the strike resolver must agree. Pure + zero-alloc — fills the caller's
+    // `scratch` via PieceRules.LegalMoves; the caller owns any occupancy overlay.
+    public static bool AnyEnemyCanCapture(List<BattlePiece> pieces, IBattleQuery board,
+        HexCoord dest, List<HexCoord> scratch)
+    {
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            var e = pieces[i];
+            if (!e.Alive || e.Side != PieceSide.Enemy) continue;
+            if (e.StunTurns > 0) continue;             // can't act next turn
+            if (e.Coord == dest) continue;             // captured on landing
+            PieceRules.LegalMoves(e.Kind, PieceSide.Enemy, e.Coord, board, scratch);
+            for (int m = 0; m < scratch.Count; m++)
+                if (scratch[m] == dest) return true;
+        }
+        return false;
+    }
+
     private static int DistanceToNearestPlayer(List<BattlePiece> pieces, HexCoord from)
     {
         int best = int.MaxValue;

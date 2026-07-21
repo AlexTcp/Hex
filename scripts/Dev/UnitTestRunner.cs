@@ -215,6 +215,23 @@ public partial class UnitTestRunner : Node
             out chosen, out dest, out capture);
         Check(acted && !capture && chosen == rook && dest != rook.Coord,
             "planner falls back to a random legal move");
+
+        // AnyEnemyCanCapture — the pure death-tile reachability scan (extracted from
+        // HexBoard so the game's subtlest fairness invariant is deterministic-testable).
+        rook.StunTurns = 0;
+        var prey = new BattlePiece { Kind = PieceKind.Pawn, Side = PieceSide.Player, Coord = new HexCoord(0, 2) };
+        var reach = Pieces(rook, prey); Occupy(reach);
+        Check(EnemyPlanner.AnyEnemyCanCapture(reach, board, new HexCoord(0, 2), scratch),
+            "danger scan: a rook on the line threatens the tile");
+        Check(!EnemyPlanner.AnyEnemyCanCapture(reach, board, new HexCoord(1, 2), scratch),
+            "danger scan: an off-line tile is safe");
+        rook.StunTurns = 1;
+        Check(!EnemyPlanner.AnyEnemyCanCapture(reach, board, new HexCoord(0, 2), scratch),
+            "danger scan: a stunned enemy poses no threat");
+        rook.StunTurns = 0;
+        var lone = Pieces(rook); Occupy(lone);
+        Check(!EnemyPlanner.AnyEnemyCanCapture(lone, board, rook.Coord, scratch),
+            "danger scan: an enemy does not threaten its own tile");
     }
 
     // ----- BattlePlanner --------------------------------------------------------

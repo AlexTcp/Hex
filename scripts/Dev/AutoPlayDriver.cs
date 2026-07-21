@@ -135,7 +135,7 @@ public partial class AutoPlayDriver : Node
                 return false;
             }
             _cleared[battleNo]++;
-            if (run.Battle > RunState.FinalBattle)
+            if (run.RunWon)
             {
                 GD.Print($"[AUTOPLAY] run {index}: VICTORY (score {run.Score}, ${run.Money})");
                 return true;
@@ -168,24 +168,20 @@ public partial class AutoPlayDriver : Node
             {
                 var kind = ShopOffers.RollPieceOffer(run.Battle, _rng);
                 int price = PieceCatalog.Info(kind).Price;
-                if (run.Army.Count + run.Reserve.Count < 7 && run.Money >= price)
-                {
-                    run.Money -= price;
+                if (run.Army.Count + run.Reserve.Count < 7 && run.TrySpend(price))
                     run.AddPiece(kind);
-                }
             }
-            // Reroll only while flush and still short on pieces.
+            // Reroll only while flush and still short on pieces (always affordable here).
             if (run.Army.Count + run.Reserve.Count >= 6 || run.Money < rerollPrice + 5) break;
-            run.Money -= rerollPrice;
+            run.TrySpend(rerollPrice);
         }
 
         if (_rng.Next(5) < 2)
         {
             foreach (var g in GambitCatalog.All)
             {
-                if (run.Gambits.Contains(g.Kind) || run.Money < g.Price) continue;
-                run.Money -= g.Price;
-                run.Gambits.Add(g.Kind);
+                if (run.Gambits.Contains(g.Kind) || !run.TrySpend(g.Price)) continue;
+                run.AddGambit(g.Kind);
                 break;
             }
         }
@@ -193,11 +189,8 @@ public partial class AutoPlayDriver : Node
         {
             var up = TileUpgradeCatalog.All[_rng.Next(TileUpgradeCatalog.All.Length)];
             var coord = ShopOffers.RollUpgradeCoord(run, _rng);
-            if (coord.HasValue && run.Money >= up.Price)
-            {
-                run.Money -= up.Price;
-                run.TileUpgrades[coord.Value] = up.Kind;
-            }
+            if (coord.HasValue && run.TrySpend(up.Price))
+                run.SetTileUpgrade(coord.Value, up.Kind);
         }
     }
 

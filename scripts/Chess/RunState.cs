@@ -66,6 +66,11 @@ public sealed class RunState
 
     public static bool IsBossBattle(int battle) => battle % 4 == 0;
 
+    // The run is won once the final battle is cleared: WinBattle post-increments
+    // Battle, so it lands past FinalBattle. The single home for this rule (the Board,
+    // the screen flow, and the harness all asked the same question independently).
+    public bool RunWon => Battle > FinalBattle;
+
     // Starter pool: everything but the Queen (she's a late-run shop prize).
     private static readonly PieceKind[] StarterPool =
     {

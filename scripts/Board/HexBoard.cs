@@ -632,20 +632,12 @@ public partial class HexBoard : Node3D, IBattleQuery
         // turn regardless of how many enemies could reach it.
         if (CaptureBlockedAt(dest, kind)) return false;
 
+        // Overlay the hypothetical occupancy (a player piece at `dest`), then ask the
+        // pure reachability scan; it reads occupancy through `this` (IBattleQuery).
         _hypoFrom = from;
         _hypoTo = dest;
         _hypoActive = true;
-        bool danger = false;
-        for (int i = 0; i < _pieces.Count && !danger; i++)
-        {
-            var e = _pieces[i];
-            if (!e.Alive || e.Side != PieceSide.Enemy) continue;
-            if (e.StunTurns > 0) continue;             // can't act next turn
-            if (e.Coord == dest) continue;             // captured on landing
-            PieceRules.LegalMoves(e.Kind, PieceSide.Enemy, e.Coord, this, _dangerScratch);
-            for (int m = 0; m < _dangerScratch.Count; m++)
-                if (_dangerScratch[m] == dest) { danger = true; break; }
-        }
+        bool danger = EnemyPlanner.AnyEnemyCanCapture(_pieces, this, dest, _dangerScratch);
         _hypoActive = false;
         return danger;
     }
@@ -1198,7 +1190,7 @@ public partial class HexBoard : Node3D, IBattleQuery
         _run.Battle++;
 
         // Crossing the finish line rewards the army you kept alive.
-        if (_run.Battle > RunState.FinalBattle && _run.Army.Count > 0)
+        if (_run.RunWon && _run.Army.Count > 0)
         {
             int bonus = Scoring.SurvivorsBonus(_run.Army.Count);
             AddScore(bonus);

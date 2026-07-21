@@ -170,7 +170,7 @@ public partial class ScreenManager : Node
         var run = _session.CurrentRun;
         _hud.ShowCleared();
 
-        if (run.Battle > RunState.FinalBattle)
+        if (run.RunWon)
         {
             // The crown is won. Commit records and present the victory.
             bool newBest = _session.CommitRun(wonRun: true);
