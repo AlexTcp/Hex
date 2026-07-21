@@ -393,3 +393,30 @@ lag reads against ahead-of-visual state" is purely cosmetic + self-correcting pe
 verifier; any input-lock fix risks the responsiveness pillar, so it is NOT worth it now.
 Also noted: normal MOVE highlighting hides the crack telegraph the same way deploy did —
 a broader rung-4 enhancement needing a distinct cracked-but-legal highlight material.)
+
+## Round 31
+
+_Rungs 1-3 clear (audit's confirmed bugs fixed; readability-desync deferred). Moving to
+rung 4. Theme: multi-event actions must render each event distinctly — the pooled FX are
+all single-instance, so concurrent events collapse. Category [feel] (last 2 tagged rounds
+were [ui]/[qol], so [feel] respects the variety rule). All three confirmed by reading
+`HexBoard.Fx.cs` + `Hud.cs`._
+
+- [x] **[feel] Money pops no longer collapse** (pillar 3 economy readability + pillar 1) —
+      `HexBoard.Fx.ShowMoneyPop` reused ONE `Label3D`/tween, so a capture pop and the
+      battle-clear centre-bonus pop (which happen on EVERY battle-clearing capture) — and
+      Bishop-Echo double captures — collapse into a single +$N, hiding money. Replace with
+      a small round-robin pool of Label3D pops, each animating independently.
+- [x] **[feel] Capture sparks no longer teleport** (pillar 1 readable exchanges) —
+      `HexBoard.Fx.PlayCaptureBurst` reused ONE `CpuParticles3D`; a capture-then-counter-
+      capture exchange Restart()s + repositions the same system mid-flight, so the first
+      spark burst jumps to the second hex. Small round-robin pool of burst systems.
+- [x] **[feel] Score pop doesn't fight itself** (pillar 1 consistent HUD feedback) —
+      `Hud.SetScore` started a fresh, unkilled scale tween each call; multi-score actions
+      (capture + clear bonus, Bishop Echo) fire overlapping pops. Kill the prior tween and
+      reset scale first.
+- [x] **Verified** — build clean (0 warnings); 955 unit checks; UI-flow PASS (softlock probe
+      still green); 80-run autoplay exit 0 / 0 failures, orphans=0 (pools reuse, no leak).
+      Behaviour is correct by construction (independent pooled nodes + tweens) + no
+      regression; NOT eyeball-confirmed in-render (headless env — windowed capture on the
+      shared :0 display is slow and risks the user's desktop, so it was not run).

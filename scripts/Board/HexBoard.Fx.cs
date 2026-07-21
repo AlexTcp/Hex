@@ -28,9 +28,16 @@ public partial class HexBoard
     private MeshInstance3D _ringNode;
     private Tween _ringTween;
     private MeshInstance3D _selectRingNode;
-    private CpuParticles3D _captureParticles;
-    private Label3D _moneyPop;
-    private Tween _moneyPopTween;
+    // Small round-robin pools so multi-event actions render each event distinctly:
+    // a capture spark + the ~0.32s-later counter-capture spark, and a capture pop +
+    // the battle-clear centre-bonus pop (every battle clear) / Bishop-Echo double.
+    private const int CaptureBurstPool = 4;
+    private CpuParticles3D[] _captureBursts;
+    private int _captureBurstNext;
+    private const int MoneyPopPool = 5;
+    private Label3D[] _moneyPops;
+    private Tween[] _moneyPopTweens;
+    private int _moneyPopNext;
     private HexCoord? _shopPreviewCoord;     // tile a shop offer would claim
 
     // ----- Highlight pulse ---------------------------------------------------
@@ -176,36 +183,50 @@ public partial class HexBoard
     private void ShowMoneyPop(HexCoord coord, int amount)
     {
         if (amount <= 0) return;
-        if (_moneyPop == null)
+        if (_moneyPops == null)
         {
-            _moneyPop = new Label3D
+            _moneyPops = new Label3D[MoneyPopPool];
+            _moneyPopTweens = new Tween[MoneyPopPool];
+            for (int i = 0; i < MoneyPopPool; i++)
             {
-                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
-                FontSize = 96,
-                PixelSize = 0.005f,
-                OutlineSize = 24,
-                OutlineModulate = new Color(0, 0, 0, 0.85f),
-                NoDepthTest = true,
-                Visible = false,
-            };
-            AddChild(_moneyPop);
+                var lbl = new Label3D
+                {
+                    Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                    FontSize = 96,
+                    PixelSize = 0.005f,
+                    OutlineSize = 24,
+                    OutlineModulate = new Color(0, 0, 0, 0.85f),
+                    NoDepthTest = true,
+                    Visible = false,
+                };
+                AddChild(lbl);
+                _moneyPops[i] = lbl;
+            }
         }
-        _moneyPopTween?.Kill();
-        Sfx.Play(SfxCue.Coin);
-        _moneyPop.Text = $"+${amount}";
-        _moneyPop.Position = HexLayout.ToWorld(coord, 0.6f);
-        _moneyPop.Modulate = new Color(GoldColor.R, GoldColor.G, GoldColor.B, 1f);
-        _moneyPop.Visible = true;
 
-        _moneyPopTween = CreateTween();
-        _moneyPopTween.TweenProperty(_moneyPop, "position:y", 1.4f, 0.7f)
+        // Round-robin a free slot so concurrent payouts (capture + clear bonus,
+        // Bishop Echo) each rise from their own hex instead of collapsing to one.
+        int slot = _moneyPopNext;
+        _moneyPopNext = (_moneyPopNext + 1) % MoneyPopPool;
+        var pop = _moneyPops[slot];
+        _moneyPopTweens[slot]?.Kill();
+
+        Sfx.Play(SfxCue.Coin);
+        pop.Text = $"+${amount}";
+        pop.Position = HexLayout.ToWorld(coord, 0.6f);
+        pop.Modulate = new Color(GoldColor.R, GoldColor.G, GoldColor.B, 1f);
+        pop.Visible = true;
+
+        var tween = CreateTween();
+        tween.TweenProperty(pop, "position:y", 1.4f, 0.7f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
-        _moneyPopTween.Parallel().TweenProperty(_moneyPop, "modulate:a", 0f, 0.7f)
+        tween.Parallel().TweenProperty(pop, "modulate:a", 0f, 0.7f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
-        _moneyPopTween.TweenCallback(Callable.From(() =>
+        tween.TweenCallback(Callable.From(() =>
         {
-            if (IsInstanceValid(_moneyPop)) _moneyPop.Visible = false;
+            if (IsInstanceValid(pop)) pop.Visible = false;
         }));
+        _moneyPopTweens[slot] = tween;
     }
 
     private void PlayCaptureBurst(HexCoord coord, float delay = 0f)
@@ -218,29 +239,39 @@ public partial class HexBoard
             return;
         }
         Sfx.Play(SfxCue.Capture);
-        if (_captureParticles == null)
+        if (_captureBursts == null)
         {
-            _captureParticles = new CpuParticles3D
+            _captureBursts = new CpuParticles3D[CaptureBurstPool];
+            for (int i = 0; i < CaptureBurstPool; i++)
             {
-                Mesh = SharedSparkMesh,
-                MaterialOverride = SparkMaterialShared,
-                Emitting = false,
-                OneShot = true,
-                Amount = 14,
-                Lifetime = 0.5,
-                Explosiveness = 1.0f,
-                Direction = Vector3.Up,
-                Spread = 35f,
-                InitialVelocityMin = 1.2f,
-                InitialVelocityMax = 2.4f,
-                Gravity = new Vector3(0, -3f, 0),
-                ScaleAmountMin = 0.6f,
-                ScaleAmountMax = 1.0f,
-            };
-            AddChild(_captureParticles);
+                var ps = new CpuParticles3D
+                {
+                    Mesh = SharedSparkMesh,
+                    MaterialOverride = SparkMaterialShared,
+                    Emitting = false,
+                    OneShot = true,
+                    Amount = 14,
+                    Lifetime = 0.5,
+                    Explosiveness = 1.0f,
+                    Direction = Vector3.Up,
+                    Spread = 35f,
+                    InitialVelocityMin = 1.2f,
+                    InitialVelocityMax = 2.4f,
+                    Gravity = new Vector3(0, -3f, 0),
+                    ScaleAmountMin = 0.6f,
+                    ScaleAmountMax = 1.0f,
+                };
+                AddChild(ps);
+                _captureBursts[i] = ps;
+            }
         }
-        _captureParticles.Position = HexLayout.ToWorld(coord, PieceY + 0.3f);
-        _captureParticles.Restart();
-        _captureParticles.Emitting = true;
+
+        // Round-robin so a capture and its ~0.32s-later counter-capture don't
+        // reposition + Restart() the same system mid-flight (spark teleport).
+        var burst = _captureBursts[_captureBurstNext];
+        _captureBurstNext = (_captureBurstNext + 1) % CaptureBurstPool;
+        burst.Position = HexLayout.ToWorld(coord, PieceY + 0.3f);
+        burst.Restart();
+        burst.Emitting = true;
     }
 }

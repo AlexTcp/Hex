@@ -34,6 +34,7 @@ public partial class Hud : Control
     private Label _enemiesLabel;
     private Label _moneyLabel;
     private Label _scoreValue;
+    private Tween _scoreTween;
     private Label _crumbleLabel;
     private PanelContainer _crumbleChip;
     private Label _note;
@@ -216,10 +217,15 @@ public partial class Hud : Control
         if (_scoreValue == null) return;
         _scoreValue.Text = score.ToString();
         _scoreValue.PivotOffset = _scoreValue.Size / 2f;
-        var pop = CreateTween();
-        pop.TweenProperty(_scoreValue, "scale", new Vector2(1.15f, 1.15f), 0.10f)
+        // Kill any in-flight pop and reset scale first: multi-score actions (capture +
+        // clear bonus, Bishop Echo) fire back-to-back, and overlapping tweens on the
+        // same scale property would fight and could leave the label stuck mid-pop.
+        _scoreTween?.Kill();
+        _scoreValue.Scale = Vector2.One;
+        _scoreTween = CreateTween();
+        _scoreTween.TweenProperty(_scoreValue, "scale", new Vector2(1.15f, 1.15f), 0.10f)
             .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
-        pop.TweenProperty(_scoreValue, "scale", Vector2.One, 0.12f)
+        _scoreTween.TweenProperty(_scoreValue, "scale", Vector2.One, 0.12f)
             .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
     }
 
