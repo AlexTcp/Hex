@@ -479,3 +479,29 @@ _Rung 4 continues. [audio] + [feel] (variety: last tagged rounds [ui] R32, [qol]
 - [x] **Verified** — build clean (0 warnings); 955 unit checks; UI-flow PASS (buy path runs
       the new coin call; defeat→title drift path exercised). Audio is a safe headless no-op;
       the coin cue was already validated in prior rounds — this only adds a call site.
+
+_Render check (rounds 31-34): captured the 9-shot screenshot flow on a private Xvfb virtual
+display (safe — not the user's :0 desktop) and reviewed. Confirmed in-render: death-tile red
+telegraph (04-selection), crumble telegraph + danger vignette (11-cracked), clean shop with
+the composition line + PIECE cards (06-shop), and — validating R31 — a floating +$N pop and
+a capture spark rendering at DIFFERENT hexes simultaneously (08-money-pop), which pre-R31
+would have collapsed. No visual regressions._
+
+## Round 35
+
+_Rung 4 continues. [ui] (variety OK: last tagged rounds [qol] R33, [audio]+[feel] R34)._
+
+- [x] **[ui] Shop composition line can't overrun** (pillar 3) — `ShopScreen._money` was a
+      single-line centred label; a hoarded army+reserve string could overrun the viewport
+      (Round 28 fixed the analogous reserve BAR, not this label). Enabled WordSmart autowrap
+      (the label spans the centred column, so it now wraps instead of overflowing).
+- [x] **[ui] Deploy-mode screenshot coverage** (verifies R32) — added a "12-deploy" shot to
+      the UI-flow driver: inject a throwaway reserve piece, enter deploy mode, shoot the lit
+      tiles, then clean up so the run is untouched. Gives the deploy telegraph (gold/red)
+      permanent screenshot coverage the headless harnesses can't provide.
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS headless (deploy inject/
+      cancel path runs, run left untouched); Xvfb render of 12-deploy shows deploy mode
+      correctly lighting empty home-half tiles gold (no red in battle 1 — northern enemies
+      can't threaten the southern home tiles next turn, which is exactly right; the red
+      death-paint uses the same DangerHighlightMaterialShared path already confirmed in
+      04-selection). Shop-label autowrap is an obviously-correct property flip.

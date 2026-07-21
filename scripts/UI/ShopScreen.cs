@@ -75,6 +75,9 @@ public partial class ShopScreen : Control
         col.AddChild(_bossLine);
 
         _money = UiTheme.MakeLabel("", UiTheme.HudPrimarySize, UiTheme.Accent, HorizontalAlignment.Center);
+        // A hoarded army + reserve makes this composition line long; wrap it so it
+        // can never overrun the viewport width (the label spans the centred column).
+        _money.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         col.AddChild(_money);
 
         _cardRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };

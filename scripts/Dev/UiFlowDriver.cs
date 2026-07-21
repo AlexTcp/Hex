@@ -206,6 +206,17 @@ public partial class UiFlowDriver : Node
             _board.ClearSelection();
             break;
         }
+
+        // Deploy-mode highlights (round 32/35): inject a throwaway reserve piece,
+        // enter deploy mode, and shoot the lit deploy tiles (gold, and danger-red
+        // for any an enemy could capture next turn). Cleaned up so the real run is
+        // untouched. Verifies the deploy telegraph the headless harnesses can't see.
+        var reserve = _session.CurrentRun.Reserve;
+        reserve.Add(PieceKind.Rook);
+        _board.BeginDeploy(reserve.Count - 1);
+        await Shot("12-deploy");
+        _board.CancelDeploy();
+        if (reserve.Count > 0) reserve.RemoveAt(reserve.Count - 1);
     }
 
     // Battle 1 won: shop (shot + a purchase), then with screenshots on push

@@ -14,3 +14,5 @@
 - Round 33 [qol]: abandoning a run from the pause menu now asks for confirmation ("Abandon this run?") so a mis-tap on ABANDON (right under RESUME) can't discard a whole run.
 - Round 34 [audio]: a successful shop purchase now plays a coin "ka-ching" over the tap tick, so buying feels rewarding and distinct from an unaffordable tap.
 - Round 34 [feel]: the menu camera drift no longer fights a lingering defeat shake when returning from the Game Over screen quickly.
+- Round 35 [ui]: the shop's money/army/reserve line now wraps instead of overrunning the screen when the army and reserve are large.
+- Round 35 [ui]: added deploy-mode screenshot coverage to the UI-flow harness (verifies the deploy death-tile telegraph renders).
