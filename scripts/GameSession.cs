@@ -91,7 +91,16 @@ public partial class GameSession : Node
     {
         var cfg = new ConfigFile();
         // First run (no file) leaves every field at its default — never throws.
-        if (cfg.Load(SavePath) != Error.Ok) return;
+        if (cfg.Load(SavePath) != Error.Ok)
+        {
+            // A file that EXISTS but won't parse is corrupt (e.g. a force-kill mid-
+            // write). Load already left the defaults standing; overwrite the bad file
+            // with a valid default save so the parse error doesn't recur every boot
+            // and records can accumulate again. (A truly absent file is normal —
+            // leave it, it will be created on the first real Save.)
+            if (FileAccess.FileExists(SavePath)) Save();
+            return;
+        }
 
         BestBattle = (int)cfg.GetValue(Section, "best_battle", 0);
         HighScore = (int)cfg.GetValue(Section, "high_score", 0);

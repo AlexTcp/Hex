@@ -353,3 +353,43 @@ out of commits.)
       new `audio/*.wav` ship correctly; added `exclude_filter="dev/*"` so the harness
       scenes stay out of APKs (their scripts are release stubs anyway).
 - [x] **Verified** — build clean; headless boot clean.
+
+## Round 30
+
+_Linux session resumes the loop (rounds 1-29 were on Windows). Setup: normalized the
+Windows CRLF working tree back to LF (content-identical to HEAD); build clean; 955 unit
+checks; 100-run autoplay 0 failures / 22 wins; 300-run sweep 23.7% win, finale 57%
+(fair, no cliff — NO tuning, per the Round-4 discipline); UI-flow PASS; 4 baseline
+screenshots reviewed (UI clear & polished); real-play logs clean. Round-30 problems
+found by an adversarially-verified fan-out audit across all six subsystems._
+
+- [x] **[rung 2] Fix pause-during-transition softlock** — `ScreenManager.GoPause`. The HUD
+      pause button sits above the scrim and stays clickable during the 0.4s post-battle
+      HUD fade-out; a tap there hijacks the in-flight Shop/GameOver transition into Paused,
+      and RESUME returns to a board with `_running==false` where every tap/deploy no-ops —
+      the run is stranded (only ABANDON escapes). Guard `GoPause` to act only in Playing.
+- [x] **[rung 3] Deploy no longer hides the crumble telegraph** — `HexBoard.BeginDeploy`.
+      Deploy targets were `IsPlayable && !_occupied`, which does NOT exclude `_cracked`
+      tiles; the gold deploy highlight overpaints the cracked material (RefreshTileVisual
+      early-returns for highlighted coords), so a reserve piece drops onto an
+      about-to-collapse tile painted safe. Exclude `_cracked` tiles from deploy targets.
+- [x] **[rung 3] Corrupt-save self-heal** — `GameSession.Load`. A malformed `hex.cfg`
+      (verified via a corruption probe) makes `ConfigFile.Load` push a red ERROR + stack
+      trace every boot and silently resets ALL meta progress (best battle / high score /
+      crowns) to defaults. Load already bails safely to defaults; now on a *present but
+      unreadable* file it re-Saves valid defaults so the error can't recur every boot and
+      records accumulate again.
+- [x] **Harness guard for the softlock** — added a "pause during the post-battle transition"
+      probe to `UiFlowDriver.PhaseWinPath`: presses "II" mid-fade and fails if the pause
+      overlay opens. Proven red→green — with the guard removed, uiflow exits 1
+      ("pause hijacked the post-battle transition"); restored, it prints
+      "pause during post-battle fade ignored ok" and PASSes.
+- [x] **Verified** — build clean; 955 unit checks; UI-flow PASS (softlock probe green, and
+      red when the fix is reverted); 100-run autoplay exit 0 / 0 failures (curve normal,
+      finale 58%); corrupt-save probe: boot 1 = 1 parse error then heals, boot 2 = 0 errors.
+
+(Deferred, logged for later: the confirmed rung-3 "tap during the 0.22s/0.32s enemy-visual
+lag reads against ahead-of-visual state" is purely cosmetic + self-correcting per the
+verifier; any input-lock fix risks the responsiveness pillar, so it is NOT worth it now.
+Also noted: normal MOVE highlighting hides the crack telegraph the same way deploy did —
+a broader rung-4 enhancement needing a distinct cracked-but-legal highlight material.)

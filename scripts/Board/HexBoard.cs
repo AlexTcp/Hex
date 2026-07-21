@@ -634,6 +634,11 @@ public partial class HexBoard : Node3D, IBattleQuery
             foreach (var c in _active)
             {
                 if (!IsPlayable(c) || _occupied.ContainsKey(c)) continue;
+                // Never offer a cracked tile: the gold deploy highlight would
+                // overpaint the crumble telegraph (RefreshTileVisual yields to
+                // highlights), dropping a fresh reserve piece onto a tile that
+                // collapses within CrackGrace actions with no warning.
+                if (_cracked.Contains(c)) continue;
                 if (pass == 0 && c.R < 1) continue;    // prefer the home half
                 _highlighted.Add(c);
                 if (_tiles.TryGetValue(c, out var tile))

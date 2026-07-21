@@ -214,6 +214,27 @@ public partial class UiFlowDriver : Node
     private async Task<bool> PhaseWinPath()
     {
         GD.Print("[UIFLOW] battle 1 won → shop");
+
+        // Regression guard (round 30): a pause tap during the ~0.4s post-battle HUD
+        // fade-out must NOT hijack the transition. The pause button ("II") is still
+        // visible mid-fade; press it. The guarded GoPause ignores taps outside
+        // Playing, so the pause overlay must NOT open (RESUME must not appear) and the
+        // shop must still arrive. If the softlock returns, GoPause enters Paused here,
+        // RESUME shows, and — after any resume — the board is left with _running==false
+        // (dead), so NEXT BATTLE never appears and the run is stranded.
+        var pauseBtn = FindButton("II");
+        if (pauseBtn != null)
+        {
+            pauseBtn.EmitSignal(BaseButton.SignalName.Pressed);
+            await Frames(2);
+            if (FindButton("RESUME") != null)
+            {
+                Fail("pause hijacked the post-battle transition (softlock regression)");
+                return false;
+            }
+            GD.Print("[UIFLOW] pause during post-battle fade ignored ok");
+        }
+
         if (await ExpectButton("NEXT BATTLE") == null) return false;
         await Shot("06-shop");
 

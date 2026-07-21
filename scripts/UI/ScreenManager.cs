@@ -249,6 +249,12 @@ public partial class ScreenManager : Node
 
     private void GoPause()
     {
+        // The HUD pause button sits above the scrim and stays clickable through the
+        // ~0.4s post-battle HUD fade-out. Without this guard a tap in that window
+        // would hijack the in-flight Shop/GameOver transition into Paused; RESUME then
+        // lands on a board with _running == false where every tap/deploy no-ops,
+        // stranding the run (only ABANDON escapes). Pause only from live play.
+        if (_state != AppState.Playing || _tutorialActive) return;
         _board.ClearSelection();   // don't leave highlights/pulse behind the menu
         _pause.Refresh(_session.CurrentRun);
         GoState(AppState.Paused, _pause, 0.5f, 0.18f);
